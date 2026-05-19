@@ -4,6 +4,8 @@ import { bitrixApi } from '@/lib/bitrix-api';
 /**
  * GET /api/task/[id]/comments
  * Fetches comment history for a Bitrix24 task.
+ * Uses task.commentitem.getlist which returns comments from both
+ * the old forum system and the new chat system.
  */
 export async function GET(
   _request: NextRequest,
@@ -23,7 +25,7 @@ export async function GET(
       result: unknown[];
     }>('task.commentitem.getlist', {
       TASKID: id,
-      order: { POST_DATE: 'ASC' },
+      ORDER: { ID: 'ASC' },
     });
 
     const rawComments = response.result;
@@ -33,14 +35,15 @@ export async function GET(
 
     const comments = rawComments.map((c: unknown) => {
       const comment = c as Record<string, unknown>;
+      const messageText = String(comment.POST_MESSAGE || '');
       return {
         id: String(comment.ID || ''),
         authorId: parseInt(String(comment.AUTHOR_ID || '0')),
         authorName: String(comment.AUTHOR_NAME || ''),
         authorAvatar: String(comment.AUTHOR_AVATAR || ''),
-        text: String(comment.POST_MESSAGE || ''),
+        text: messageText,
         date: String(comment.POST_DATE || ''),
-        isDashboard: String(comment.POST_MESSAGE || '').includes('дашборда БИГАП') || String(comment.POST_MESSAGE || '').includes('дашборда БИГАП'),
+        isDashboard: messageText.includes('дашборда БИГАП') || messageText.includes('дашборд'),
       };
     });
 

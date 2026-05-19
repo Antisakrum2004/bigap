@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { Check, Image as ImageIcon, X, Paperclip, MessageSquare } from 'lucide-react';
+import { Check, Image as ImageIcon, X, Paperclip } from 'lucide-react';
 
 interface CommentItem {
   id: string;
@@ -46,12 +46,25 @@ function formatCommentDate(dateStr: string): string {
 
 function stripBbCode(text: string): string {
   return text
+    // Remove BBCode tags
     .replace(/\[B\](.*?)\[\/B\]/gi, '$1')
     .replace(/\[USER=\d+\](.*?)\[\/USER\]/gi, '@$1')
     .replace(/\[URL=?([^\]]*)\](.*?)\[\/URL\]/gi, '$2')
-    .replace(/\[IMG\](.*?)\[\/IMG\]/gi, '$1')
+    .replace(/\[IMG\](.*?)\[\/IMG\]/gi, '📎 Изображение')
     .replace(/\[DISK FILE ID=[^\]]*\]/gi, '📎')
     .replace(/\[(\/?)(?:b|i|u|s|code|quote|list|[\*]|color[^\]]*|size[^\]]*|font[^\]]*|url[^\]]*|img|video|audio|user[^\]]*|br|disk file[^\]]*)\]/gi, '')
+    // Remove Bitrix24 emoji shortcodes like :f09f938c:
+    .replace(/:[a-f0-9]{6,12}:/gi, (match) => {
+      // Convert hex emoji code to actual emoji if possible
+      try {
+        const hex = match.slice(1, -1);
+        const codePoint = parseInt(hex, 16);
+        if (codePoint > 0 && codePoint < 0x10FFFF) {
+          return String.fromCodePoint(codePoint);
+        }
+      } catch {}
+      return '';
+    })
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
@@ -63,11 +76,13 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
   const [sent, setSent] = useState(false);
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [filePreviews, setFilePreviews] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fetchAbortRef = useRef<boolean>(false);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -78,29 +93,35 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
     }
   }, [comment, focused]);
 
-  // Fetch comments
+  // Fetch comments — uses ref to avoid stale closure issues
   const fetchComments = useCallback(async () => {
-    if (loadingComments) return;
+    if (fetchAbortRef.current) return;
     setLoadingComments(true);
     try {
       const response = await fetch(`/api/task/${taskId}/comments`);
-      if (response.ok) {
+      if (response.ok && !fetchAbortRef.current) {
         const data = await response.json();
         setComments(data.comments || []);
+        setCommentsLoaded(true);
       }
     } catch {
       // silently fail
     } finally {
-      setLoadingComments(false);
+      if (!fetchAbortRef.current) {
+        setLoadingComments(false);
+      }
     }
-  }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [taskId]);
 
-  // When showing comments section, fetch them
+  // When showing expanded mode, fetch comments
   useEffect(() => {
-    if (expanded) {
+    if (expanded && !commentsLoaded) {
       fetchComments();
     }
-  }, [expanded]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      fetchAbortRef.current = true;
+    };
+  }, [expanded, commentsLoaded, fetchComments]);
 
   // Handle file selection
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -217,9 +238,6 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
           responsibleId,
           fileIds: hasFiles ? fileIds : undefined,
         }),
-      }).catch(async (err) => {
-        console.error('Comment fetch error:', err);
-        return { ok: false, json: async () => ({ error: err.message }) } as Response;
       });
 
       if (response.ok) {
@@ -233,8 +251,9 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
         } catch {}
         // Don't unfocus in expanded mode
         if (!expanded) setFocused(false);
-        // Refresh comments
-        setTimeout(() => fetchComments(), 1000);
+        // Refresh comments to show the new one
+        setCommentsLoaded(false); // Force re-fetch
+        setTimeout(() => fetchComments(), 1500);
         // Notify parent
         onCommentSent?.();
         // Reset sent indicator after 60 seconds
@@ -296,7 +315,7 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
         {loadingComments && comments.length === 0 && (
           <p className="text-xs text-gray-400">Загрузка комментариев...</p>
         )}
-        {!loadingComments && comments.length === 0 && (
+        {!loadingComments && commentsLoaded && comments.length === 0 && (
           <p className="text-xs text-gray-400">Пока нет комментариев</p>
         )}
 
@@ -390,6 +409,33 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
 
   // Not focused, not sent — show subtle placeholder
   if (!focused && !sent) {
+    // Check localStorage for sent indicator
+    let showSent = false;
+    try {
+      const ls = localStorage.getItem(`bigap-comment-sent-${taskId}`);
+      if (ls && Date.now() - parseInt(ls) < 24 * 60 * 60 * 1000) {
+        showSent = true;
+      }
+    } catch {}
+
+    if (showSent) {
+      return (
+        <div className={cn('flex items-center gap-1.5 min-h-[24px]', className)}>
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0" title="Комментарий отправлен" />
+          <textarea
+            ref={textareaRef}
+            value={comment}
+            onChange={(e) => { setComment(e.target.value); }}
+            onFocus={() => setFocused(true)}
+            placeholder="Коммент."
+            rows={1}
+            className="w-full text-sm text-gray-700 bg-transparent border-0 outline-none resize-none placeholder:text-gray-300 cursor-pointer"
+            style={{ height: '24px', overflow: 'hidden' }}
+          />
+        </div>
+      );
+    }
+
     return (
       <div className={cn('flex items-center gap-1.5 min-h-[24px]', className)}>
         <textarea
@@ -512,42 +558,23 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
 
 /**
  * Small indicator component for task rows showing if a comment was sent from dashboard.
- * Checks both localStorage (recently sent) and API (has dashboard comments).
+ * Uses localStorage only (no API calls per row to avoid rate limiting).
  */
 export function CommentSentIndicator({ taskId }: { taskId: string }) {
   const [hasSent, setHasSent] = useState(false);
 
   useEffect(() => {
-    // Check localStorage first (fast, for recently sent comments)
     try {
       const sent = localStorage.getItem(`bigap-comment-sent-${taskId}`);
       if (sent) {
         const timestamp = parseInt(sent);
         if (Date.now() - timestamp < 24 * 60 * 60 * 1000) {
           setHasSent(true);
-          return;
         } else {
           localStorage.removeItem(`bigap-comment-sent-${taskId}`);
         }
       }
     } catch {}
-
-    // Also check API for existing dashboard comments (slower but accurate)
-    let cancelled = false;
-    fetch(`/api/task/${taskId}/comments`)
-      .then(r => r.ok ? r.json() : { comments: [] })
-      .then(data => {
-        if (cancelled) return;
-        const dashboardComments = (data.comments || []).filter(
-          (c: CommentItem) => c.isDashboard
-        );
-        if (dashboardComments.length > 0) {
-          setHasSent(true);
-        }
-      })
-      .catch(() => {});
-
-    return () => { cancelled = true; };
   }, [taskId]);
 
   if (!hasSent) return null;

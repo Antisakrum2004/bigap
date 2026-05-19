@@ -246,6 +246,22 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
     if ((!comment.trim() && selectedFiles.length === 0) || sending) return;
 
     setSending(true);
+
+    // Optimistic update: immediately add the comment to local state
+    const optimisticComment: CommentItem = {
+      id: `temp-${Date.now()}`,
+      authorId: 0,
+      authorName: '',
+      authorAvatar: '',
+      text: comment.trim() || (selectedFiles.length > 0 ? '📎 Изображение' : ''),
+      date: new Date().toISOString(),
+      isDashboard: true,
+    };
+
+    if (expanded) {
+      setComments(prev => [...prev, optimisticComment]);
+    }
+
     try {
       // Upload files first if any
       const fileIds = await uploadFiles();
@@ -273,13 +289,22 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
           localStorage.setItem(`bigap-comment-sent-${taskId}`, String(Date.now()));
         } catch {}
         if (!expanded) setFocused(false);
+        // Refresh comments from server to replace optimistic comment with real data
         setCommentsLoaded(false);
-        setTimeout(() => fetchComments(), 1500);
+        setTimeout(() => fetchComments(), 1000);
         onCommentSent?.();
         setTimeout(() => setSent(false), 60000);
+      } else {
+        // On failure, remove optimistic comment
+        if (expanded) {
+          setComments(prev => prev.filter(c => c.id !== optimisticComment.id));
+        }
       }
     } catch {
-      // Silently fail
+      // On failure, remove optimistic comment
+      if (expanded) {
+        setComments(prev => prev.filter(c => c.id !== optimisticComment.id));
+      }
     } finally {
       setSending(false);
     }
@@ -306,15 +331,10 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
                 key={c.id}
                 className="text-xs bg-gray-50 border border-gray-100 rounded-lg px-3 py-2"
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-semibold text-gray-800">
-                    {c.authorName.split(' ')[0]}
-                  </span>
-                  <span className="text-[10px] text-gray-400" title={formatCommentFullDate(c.date)}>
-                    {formatCommentDate(c.date)}
-                  </span>
+                <div className="text-[10px] text-gray-400 mb-1" title={formatCommentFullDate(c.date)}>
+                  {formatCommentDate(c.date)}
                 </div>
-                <p className="text-gray-600 whitespace-pre-wrap break-words leading-relaxed">
+                <p className="text-gray-700 whitespace-pre-wrap break-words leading-relaxed">
                   {stripBbCode(c.text)}
                 </p>
               </div>

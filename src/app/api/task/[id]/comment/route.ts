@@ -4,8 +4,10 @@ import { bitrixApi } from '@/lib/bitrix-api';
 /**
  * POST /api/task/[id]/comment
  * Adds a comment to a Bitrix24 task from the Bigap dashboard.
- * Sends ONLY the user's plain text — no prefixes, no markers, no attachment notes.
- * Files are attached via UF_FORUM_MESSAGE_DOC (separate from comment text).
+ * Uses task.comment.add (new API — comments appear in the new task chat).
+ *
+ * IMPORTANT: The parameter name for the comment text is POST_MESSAGE,
+ * NOT commentText. Using commentText causes ERROR_CORE #256.
  */
 export async function POST(
   request: NextRequest,
@@ -35,44 +37,51 @@ export async function POST(
       );
     }
 
-    // Send ONLY the user's text — no prefix, no markers, no attachment notes
     const commentText = comment.trim();
 
     console.log(`[comment] Posting comment to task ${id}, text: "${commentText.substring(0, 50)}", fileIds:`, fileIds);
 
-    // Step 1: Add comment via task.comment.add (newer API — comments appear in the new task chat)
+    // Build the request body for task.comment.add
+    const addParams: Record<string, unknown> = {
+      taskId: id,
+      POST_MESSAGE: commentText,
+    };
+
+    // Attach files directly in the comment using UF_FORUM_MESSAGE_DOC
+    if (fileIds && fileIds.length > 0) {
+      addParams.UF_FORUM_MESSAGE_DOC = fileIds.map((fid: number) => `n${fid}`);
+    }
+
+    // Use task.comment.add (new API — comments appear in the new task chat)
     let commentId: number | null = null;
 
     try {
-      const addResult = await bitrixApi<{ result: number }>('task.comment.add', {
-        taskId: id,
-        commentText: commentText,
-      });
+      const addResult = await bitrixApi<{ result: number }>('task.comment.add', addParams);
       commentId = addResult.result;
       console.log(`[comment] Posted via task.comment.add, commentId=${commentId}`);
     } catch (e) {
-      console.warn('[comment] task.comment.add failed:', (e as Error).message);
+      console.error('[comment] task.comment.add failed:', (e as Error).message);
     }
 
-    // Fallback: try task.commentitem.add (older API)
+    // Fallback: try task.commentitem.add (older API — comments may not appear in new chat)
     if (!commentId) {
       try {
-        const commentFields: Record<string, unknown> = {
+        const fallbackFields: Record<string, unknown> = {
           POST_MESSAGE: commentText,
         };
 
         if (fileIds && fileIds.length > 0) {
-          commentFields.UF_FORUM_MESSAGE_DOC = fileIds.map((fid: number) => `n${fid}`);
+          fallbackFields.UF_FORUM_MESSAGE_DOC = fileIds.map((fid: number) => `n${fid}`);
         }
 
         const addResult2 = await bitrixApi<{ result: number }>('task.commentitem.add', {
           TASKID: id,
-          FIELDS: commentFields,
+          FIELDS: fallbackFields,
         });
         commentId = addResult2.result;
-        console.log(`[comment] Posted via task.commentitem.add, commentId=${commentId}`);
+        console.log(`[comment] Posted via task.commentitem.add fallback, commentId=${commentId}`);
       } catch (e2) {
-        console.warn('[comment] task.commentitem.add also failed:', (e2 as Error).message);
+        console.error('[comment] task.commentitem.add also failed:', (e2 as Error).message);
       }
     }
 
@@ -81,23 +90,6 @@ export async function POST(
         { error: 'Failed to post comment' },
         { status: 500 }
       );
-    }
-
-    // Step 2: If we have files and used task.comment.add, add UF_FORUM_MESSAGE_DOC
-    // via task.commentitem.update to link the files to the comment as attachments
-    if (fileIds && fileIds.length > 0 && commentId) {
-      try {
-        await bitrixApi('task.commentitem.update', {
-          TASKID: id,
-          ITEMID: commentId,
-          FIELDS: {
-            UF_FORUM_MESSAGE_DOC: fileIds.map((fid: number) => `n${fid}`),
-          },
-        });
-        console.log(`[comment] Added UF_FORUM_MESSAGE_DOC to comment ${commentId}`);
-      } catch (e) {
-        console.warn(`[comment] Failed to add UF_FORUM_MESSAGE_DOC:`, (e as Error).message);
-      }
     }
 
     return NextResponse.json({ success: true, commentId });

@@ -230,10 +230,10 @@ export function TaskModal({ task, usersMap, stagesMap, open, onOpenChange }: Tas
             </div>
           )}
 
-          {/* Comment */}
+          {/* Comments — history + input */}
           <div className="space-y-2 pt-2 border-t">
-            <h4 className="text-sm font-medium text-gray-700">Комментарий</h4>
-            <CommentCell taskId={task.id} />
+            <h4 className="text-sm font-medium text-gray-700">Комментарии</h4>
+            <CommentCell taskId={task.id} responsibleId={task.responsibleId} expanded />
           </div>
 
           {/* Bitrix link */}

@@ -127,7 +127,7 @@ export function TaskRow({ task, usersMap, stagesMap, statusFilter: _statusFilter
 
       {/* Comment */}
       <TableCell className="w-48" onClick={(e) => e.stopPropagation()}>
-        <CommentCell taskId={task.id} />
+        <CommentCell taskId={task.id} responsibleId={task.responsibleId} />
       </TableCell>
     </TableRow>
   );
@@ -183,7 +183,7 @@ export function TaskCard({ task, usersMap, stagesMap, onClick }: Omit<TaskRowPro
 
       {/* Comment */}
       <div onClick={(e) => e.stopPropagation()}>
-        <CommentCell taskId={task.id} />
+        <CommentCell taskId={task.id} responsibleId={task.responsibleId} />
       </div>
     </div>
   );

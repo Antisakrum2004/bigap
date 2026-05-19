@@ -481,10 +481,24 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
   }
 
   // Focused — expanded with send button and file attach
+  // Layout: textarea on top, action buttons below — keeps everything within the cell
   return (
-    <div className={cn('space-y-1.5 min-h-[24px]', className)} onClick={(e) => e.stopPropagation()}>
+    <div className={cn('min-h-[24px]', className)} onClick={(e) => e.stopPropagation()}>
+      <textarea
+        ref={textareaRef}
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        onBlur={() => { if (!comment.trim() && selectedFiles.length === 0) setFocused(false); }}
+        onKeyDown={handleKeyDown}
+        placeholder="Написать комментарий..."
+        rows={1}
+        autoFocus
+        className="w-full text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded px-2 py-1 outline-none resize-none focus:border-teal-300 focus:ring-1 focus:ring-teal-200"
+        style={{ overflow: 'hidden' }}
+      />
+
       {selectedFiles.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1 mt-1">
           {selectedFiles.map((f, i) => (
             <div key={i} className="relative group">
               {f.type.startsWith('image/') && filePreviews[i] ? (
@@ -509,19 +523,7 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
         </div>
       )}
 
-      <div className="flex items-start gap-1.5">
-        <textarea
-          ref={textareaRef}
-          value={comment}
-          onChange={(e) => setComment(e.target.value)}
-          onBlur={() => { if (!comment.trim() && selectedFiles.length === 0) setFocused(false); }}
-          onKeyDown={handleKeyDown}
-          placeholder="Написать комментарий..."
-          rows={1}
-          autoFocus
-          className="flex-1 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded px-2 py-1 outline-none resize-none focus:border-teal-300 focus:ring-1 focus:ring-teal-200 min-w-0"
-          style={{ overflow: 'hidden' }}
-        />
+      <div className="flex items-center gap-1 mt-1">
         <input
           ref={fileInputRef}
           type="file"
@@ -532,18 +534,18 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
         />
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="shrink-0 mt-0.5 flex items-center justify-center h-6 w-6 rounded-full hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
+          className="flex items-center justify-center h-5 w-5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
           title="Прикрепить изображение"
           type="button"
         >
-          <ImageIcon className="h-3.5 w-3.5" />
+          <ImageIcon className="h-3 w-3" />
         </button>
         {(comment.trim() || selectedFiles.length > 0) && (
           <button
             onClick={handleSend}
             disabled={sending || uploadingFiles}
             className={cn(
-              'shrink-0 mt-0.5 flex items-center justify-center h-6 w-6 rounded-full transition-colors',
+              'flex items-center justify-center h-5 w-5 rounded-full transition-colors',
               sending || uploadingFiles
                 ? 'bg-gray-200 text-gray-400'
                 : 'bg-teal-500 text-white hover:bg-teal-600'
@@ -551,13 +553,13 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
             title={uploadingFiles ? 'Загрузка файлов...' : 'Отправить'}
             type="button"
           >
-            <Check className="h-3.5 w-3.5" />
+            <Check className="h-3 w-3" />
           </button>
         )}
+        {uploadingFiles && (
+          <span className="text-[10px] text-amber-600">Загрузка...</span>
+        )}
       </div>
-      {uploadingFiles && (
-        <p className="text-[10px] text-amber-600">Загрузка файлов...</p>
-      )}
     </div>
   );
 }

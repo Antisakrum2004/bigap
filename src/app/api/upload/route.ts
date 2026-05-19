@@ -7,6 +7,10 @@ import { BITRIX_CONFIG } from '@/lib/bitrix-config';
  * Uploads a file to Bitrix24 Disk and attaches it to the task.
  * Returns the disk file ID for use in comment attachments.
  *
+ * IMPORTANT: Files must be attached to the task via UF_TASK_WEBDAV_FILES
+ * BEFORE referencing them with [DISK FILE ID=nX] in comments.
+ * tasks.task.files.attach does NOT work reliably — we use tasks.task.update.
+ *
  * Body (FormData):
  *   - file: The file to upload
  *   - taskId: The task ID (required for attaching to task)
@@ -177,30 +181,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Step 3: Attach file to task using tasks.task.files.attach (additive, doesn't replace existing files)
+    // Step 3: Attach file to task via tasks.task.update with UF_TASK_WEBDAV_FILES
+    // This is the ONLY reliable method. tasks.task.files.attach often fails with "file not found".
     if (taskId) {
       try {
-        await bitrixApi('tasks.task.files.attach', {
-          taskId: parseInt(taskId),
-          fileId: diskId,
-        });
-        console.log(`[upload] Attached file ${diskId} to task ${taskId} via tasks.task.files.attach`);
-      } catch (e) {
-        console.warn(`[upload] tasks.task.files.attach failed, trying UF_TASK_WEBDAV_FILES:`, (e as Error).message);
-        // Fallback: use tasks.task.update with UF_TASK_WEBDAV_FILES
-        // This replaces the file list, so try to preserve existing files
+        // First, get existing files on the task to preserve them
+        let existingFiles: string[] = [];
         try {
-          await bitrixApi('tasks.task.update', {
-            taskId: parseInt(taskId),
-            fields: {
-              UF_TASK_WEBDAV_FILES: [`n${diskId}`],
-            },
+          const taskResult = await bitrixApi<{
+            result: { tasks: Array<{ ufTaskWebdavFiles?: number[] }> };
+          }>('tasks.task.list', {
+            filter: { ID: taskId },
+            select: ['ID', 'UF_TASK_WEBDAV_FILES'],
           });
-          console.log(`[upload] Attached file n${diskId} to task ${taskId} via UF_TASK_WEBDAV_FILES`);
-        } catch (e2) {
-          console.warn(`[upload] UF_TASK_WEBDAV_FILES also failed:`, (e2 as Error).message);
-          // Non-fatal - the file is still uploaded to disk
+          const task = taskResult?.result?.tasks?.[0];
+          if (task?.ufTaskWebdavFiles && Array.isArray(task.ufTaskWebdavFiles)) {
+            existingFiles = task.ufTaskWebdavFiles.map((id: number) => String(id));
+          }
+        } catch {
+          // If we can't get existing files, we'll just add the new one
         }
+
+        // Build the file list: existing files + new file
+        const allFiles = [...existingFiles, `n${diskId}`];
+
+        await bitrixApi('tasks.task.update', {
+          taskId: parseInt(taskId),
+          fields: {
+            UF_TASK_WEBDAV_FILES: allFiles,
+          },
+        });
+        console.log(`[upload] Attached file n${diskId} to task ${taskId} via UF_TASK_WEBDAV_FILES (total files: ${allFiles.length})`);
+      } catch (e) {
+        console.warn(`[upload] UF_TASK_WEBDAV_FILES failed:`, (e as Error).message);
+        // Non-fatal - the file is still uploaded to disk
       }
     }
 

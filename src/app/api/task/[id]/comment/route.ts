@@ -6,8 +6,11 @@ import { bitrixApi } from '@/lib/bitrix-api';
  * Adds a comment to a Bitrix24 task from the Bigap dashboard.
  * Uses task.comment.add (new API — comments appear in the new task chat).
  *
- * IMPORTANT: The parameter name for the comment text is POST_MESSAGE,
- * NOT commentText. Using commentText causes ERROR_CORE #256.
+ * IMPORTANT:
+ * - The parameter for comment text is POST_MESSAGE (not commentText).
+ * - Files are embedded via [DISK FILE ID=nX] BBCode tags inside POST_MESSAGE.
+ *   This is the ONLY method that makes images appear inline in the chat.
+ *   UF_FORUM_MESSAGE_DOC does NOT render images inline.
  */
 export async function POST(
   request: NextRequest,
@@ -38,45 +41,55 @@ export async function POST(
     }
 
     const commentText = comment.trim();
+    const hasFiles = fileIds && fileIds.length > 0;
 
     console.log(`[comment] Posting comment to task ${id}, text: "${commentText.substring(0, 50)}", fileIds:`, fileIds);
 
-    // Build the request body for task.comment.add
-    const addParams: Record<string, unknown> = {
-      taskId: id,
-      POST_MESSAGE: commentText,
-    };
-
-    // Attach files directly in the comment using UF_FORUM_MESSAGE_DOC
-    if (fileIds && fileIds.length > 0) {
-      addParams.UF_FORUM_MESSAGE_DOC = fileIds.map((fid: number) => `n${fid}`);
+    // Attach files to the task first (required for [DISK FILE ID] to work)
+    if (hasFiles) {
+      for (const fid of fileIds!) {
+        try {
+          await bitrixApi('tasks.task.files.attach', {
+            taskId: parseInt(id),
+            fileId: fid,
+          });
+          console.log(`[comment] Attached file ${fid} to task ${id}`);
+        } catch (e) {
+          console.warn(`[comment] tasks.task.files.attach failed for file ${fid}:`, (e as Error).message);
+          // Non-fatal — the file is still on disk, just not formally attached
+        }
+      }
     }
 
-    // Use task.comment.add (new API — comments appear in the new task chat)
+    // Build the POST_MESSAGE with [DISK FILE ID=nX] tags for inline images
+    let postMessage = commentText;
+    if (hasFiles) {
+      const diskTags = fileIds!.map((fid: number) => `[DISK FILE ID=n${fid}]`).join('\n');
+      postMessage = `${commentText}\n${diskTags}`;
+    }
+
+    // Post comment via task.comment.add (new API — comments appear in the new task chat)
     let commentId: number | null = null;
 
     try {
-      const addResult = await bitrixApi<{ result: number }>('task.comment.add', addParams);
+      const addResult = await bitrixApi<{ result: number }>('task.comment.add', {
+        taskId: id,
+        POST_MESSAGE: postMessage,
+      });
       commentId = addResult.result;
       console.log(`[comment] Posted via task.comment.add, commentId=${commentId}`);
     } catch (e) {
       console.error('[comment] task.comment.add failed:', (e as Error).message);
     }
 
-    // Fallback: try task.commentitem.add (older API — comments may not appear in new chat)
+    // Fallback: try task.commentitem.add (older API)
     if (!commentId) {
       try {
-        const fallbackFields: Record<string, unknown> = {
-          POST_MESSAGE: commentText,
-        };
-
-        if (fileIds && fileIds.length > 0) {
-          fallbackFields.UF_FORUM_MESSAGE_DOC = fileIds.map((fid: number) => `n${fid}`);
-        }
-
         const addResult2 = await bitrixApi<{ result: number }>('task.commentitem.add', {
           TASKID: id,
-          FIELDS: fallbackFields,
+          FIELDS: {
+            POST_MESSAGE: postMessage,
+          },
         });
         commentId = addResult2.result;
         console.log(`[comment] Posted via task.commentitem.add fallback, commentId=${commentId}`);

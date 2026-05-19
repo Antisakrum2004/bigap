@@ -6,7 +6,6 @@ import { DashboardHeader } from '@/components/bigap-dashboard/dashboard-header';
 import { TaskTable } from '@/components/bigap-dashboard/task-table';
 import { TaskModal } from '@/components/bigap-dashboard/task-modal';
 import { UsersMap, StagesMap } from '@/lib/types';
-import { getStatusType } from '@/components/bigap-dashboard/status-dot';
 import { getStageInfo } from '@/lib/bitrix-config';
 import { AlertCircle } from 'lucide-react';
 
@@ -112,28 +111,6 @@ export default function DashboardPage() {
     return map;
   }, [usersData]);
 
-  // Compute task counts for filters
-  const taskCounts = useMemo(() => {
-    const counts = {
-      all: 0,
-      in_progress: 0,
-      overdue: 0,
-      review: 0,
-      completed: 0,
-    };
-
-    for (const task of tasks) {
-      counts.all++;
-      const statusType = getStatusType(task.deadline, task.realStatus);
-      if (task.realStatus === 3 && statusType !== 'overdue') counts.in_progress++;
-      if (statusType === 'overdue') counts.overdue++;
-      if (task.realStatus === 4) counts.review++;
-      if (task.realStatus === 5) counts.completed++;
-    }
-
-    return counts;
-  }, [tasks]);
-
   // Find selected task
   const selectedTask = selectedTaskId
     ? tasks.find((t) => t.id === selectedTaskId) ?? null
@@ -148,8 +125,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gray-50/50">
       <DashboardHeader
-        totalTasks={taskCounts.all}
-        inProgressCount={taskCounts.in_progress}
+        totalTasks={tasks.length}
         lastUpdated={lastUpdated}
         isLoading={tasksLoading}
         onRefresh={handleRefresh}
@@ -183,8 +159,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-
-
         {/* Task table */}
         <TaskTable
           tasks={tasks}
@@ -208,8 +182,4 @@ export default function DashboardPage() {
       />
     </div>
   );
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(' ');
 }

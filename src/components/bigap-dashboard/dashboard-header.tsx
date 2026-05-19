@@ -9,7 +9,6 @@ import Image from 'next/image';
 
 interface DashboardHeaderProps {
   totalTasks: number;
-  inProgressCount: number;
   lastUpdated: Date | null;
   isLoading: boolean;
   onRefresh: () => void;
@@ -17,7 +16,6 @@ interface DashboardHeaderProps {
 
 export function DashboardHeader({
   totalTasks,
-  inProgressCount,
   lastUpdated,
   isLoading,
   onRefresh,
@@ -28,7 +26,7 @@ export function DashboardHeader({
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-4">
-          {/* Left: Logo & Title */}
+          {/* Left: Logo */}
           <div className="flex items-center gap-3 shrink-0">
             <Image
               src="/logo.png"
@@ -43,15 +41,9 @@ export function DashboardHeader({
           {/* Center: Stats summary */}
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">Всего:</span>
-              <span className="inline-flex items-center justify-center h-6 min-w-[1.5rem] px-2 rounded-full text-xs font-bold bg-gray-100 text-gray-700">
-                {totalTasks}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">В работе:</span>
+              <span className="text-sm text-gray-500">Всего в работе:</span>
               <span className="inline-flex items-center justify-center h-6 min-w-[1.5rem] px-2 rounded-full text-xs font-bold bg-teal-100 text-teal-700">
-                {inProgressCount}
+                {totalTasks}
               </span>
             </div>
             <div className="hidden sm:flex items-center gap-1.5 text-sm text-gray-400">

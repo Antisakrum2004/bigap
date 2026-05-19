@@ -4,18 +4,8 @@ import { bitrixApi } from '@/lib/bitrix-api';
 /**
  * POST /api/task/[id]/comment
  * Adds a comment to a Bitrix24 task from the Bigap dashboard.
- *
- * Strategy for file attachments:
- * 1. Files are already uploaded and attached to the task via tasks.task.files.attach (in /api/upload)
- * 2. We use task.comment.add (newer API) so comments appear in the new Bitrix24 task chat
- * 3. After creating the comment, we add UF_FORUM_MESSAGE_DOC via task.commentitem.update
- *    to link the files to the comment as attachments
- *
- * Without "im" scope on the webhook, inline image rendering in the chat is limited.
- * Files will appear as:
- * - Task attachments (via tasks.task.files.attach)
- * - Comment file attachments (via UF_FORUM_MESSAGE_DOC)
- * The file is accessible from the task's file list and the comment's attachment area.
+ * Sends ONLY the user's plain text — no prefixes, no markers, no attachment notes.
+ * Files are attached via UF_FORUM_MESSAGE_DOC (separate from comment text).
  */
 export async function POST(
   request: NextRequest,
@@ -45,16 +35,10 @@ export async function POST(
       );
     }
 
-    // Build comment text with marker
-    let commentText = `📌 Комментарий из дашборда БИГАП:\n${comment.trim()}`;
+    // Send ONLY the user's text — no prefix, no markers, no attachment notes
+    const commentText = comment.trim();
 
-    // Add a note about file attachments (just plain text, not BBCode)
-    if (fileIds && fileIds.length > 0) {
-      const plural = fileIds.length === 1 ? ' вложение' : fileIds.length < 5 ? ' вложения' : ' вложений';
-      commentText += `\n📎 ${fileIds.length}${plural}`;
-    }
-
-    console.log(`[comment] Posting comment to task ${id}, fileIds:`, fileIds);
+    console.log(`[comment] Posting comment to task ${id}, text: "${commentText.substring(0, 50)}", fileIds:`, fileIds);
 
     // Step 1: Add comment via task.comment.add (newer API — comments appear in the new task chat)
     let commentId: number | null = null;
@@ -77,7 +61,6 @@ export async function POST(
           POST_MESSAGE: commentText,
         };
 
-        // If we have file IDs, attach them via UF_FORUM_MESSAGE_DOC
         if (fileIds && fileIds.length > 0) {
           commentFields.UF_FORUM_MESSAGE_DOC = fileIds.map((fid: number) => `n${fid}`);
         }
@@ -114,7 +97,6 @@ export async function POST(
         console.log(`[comment] Added UF_FORUM_MESSAGE_DOC to comment ${commentId}`);
       } catch (e) {
         console.warn(`[comment] Failed to add UF_FORUM_MESSAGE_DOC:`, (e as Error).message);
-        // Non-fatal — the comment is still posted, just without linked file attachments
       }
     }
 

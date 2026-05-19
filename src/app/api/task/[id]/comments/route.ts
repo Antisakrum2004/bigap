@@ -43,7 +43,7 @@ export async function GET(
         authorAvatar: String(comment.AUTHOR_AVATAR || ''),
         text: messageText,
         date: String(comment.POST_DATE || ''),
-        isDashboard: messageText.includes('дашборда БИГАП') || messageText.includes('дашборд'),
+        isDashboard: false,
       };
     });
 

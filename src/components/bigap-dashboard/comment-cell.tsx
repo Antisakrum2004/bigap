@@ -18,9 +18,7 @@ interface CommentCellProps {
   taskId: string;
   responsibleId?: number;
   className?: string;
-  /** If true, render expanded version for the modal */
   expanded?: boolean;
-  /** Callback when a comment is successfully sent */
   onCommentSent?: () => void;
 }
 
@@ -44,8 +42,34 @@ function formatCommentDate(dateStr: string): string {
   }
 }
 
+function formatCommentFullDate(dateStr: string): string {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+
+    const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+    if (isToday) return `Сегодня, ${time}`;
+    if (isYesterday) return `Вчера, ${time}`;
+    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) + `, ${time}`;
+  } catch {
+    return dateStr;
+  }
+}
+
 function stripBbCode(text: string): string {
   return text
+    // Remove old dashboard marker prefix (legacy comments)
+    .replace(/^\s*📌\s*Комментарий из дашборда БИГАП:\s*\n?/gi, '')
+    .replace(/^\s*Комментарий из дашборда БИГАП:\s*\n?/gi, '')
+    // Remove attachment notes (legacy)
+    .replace(/\n?📎\s*\d+\s*(вложение|вложения|вложений)/gi, '')
+    .replace(/\n?📎\s*Вложение/gi, '')
     // Remove BBCode tags
     .replace(/\[B\](.*?)\[\/B\]/gi, '$1')
     .replace(/\[USER=\d+\](.*?)\[\/USER\]/gi, '@$1')
@@ -53,9 +77,8 @@ function stripBbCode(text: string): string {
     .replace(/\[IMG\](.*?)\[\/IMG\]/gi, '📎 Изображение')
     .replace(/\[DISK FILE ID=[^\]]*\]/gi, '📎')
     .replace(/\[(\/?)(?:b|i|u|s|code|quote|list|[\*]|color[^\]]*|size[^\]]*|font[^\]]*|url[^\]]*|img|video|audio|user[^\]]*|br|disk file[^\]]*)\]/gi, '')
-    // Remove Bitrix24 emoji shortcodes like :f09f938c:
+    // Convert Bitrix24 emoji shortcodes like :f09f938c: to actual emoji
     .replace(/:[a-f0-9]{6,12}:/gi, (match) => {
-      // Convert hex emoji code to actual emoji if possible
       try {
         const hex = match.slice(1, -1);
         const codePoint = parseInt(hex, 16);
@@ -93,7 +116,7 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
     }
   }, [comment, focused]);
 
-  // Fetch comments — uses ref to avoid stale closure issues
+  // Fetch comments
   const fetchComments = useCallback(async () => {
     if (fetchAbortRef.current) return;
     setLoadingComments(true);
@@ -131,7 +154,6 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
     );
     setSelectedFiles((prev) => [...prev, ...newFiles]);
 
-    // Generate previews for images
     newFiles.forEach((f) => {
       if (f.type.startsWith('image/')) {
         const reader = new FileReader();
@@ -142,11 +164,10 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
       }
     });
 
-    // Set focused state when files are added
     if (!focused) setFocused(true);
   }, [selectedFiles, focused]);
 
-  // Handle paste (images) - only when textarea is focused
+  // Handle paste (images)
   useEffect(() => {
     if (!focused) return;
 
@@ -230,11 +251,14 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
       const fileIds = await uploadFiles();
       const hasFiles = fileIds.length > 0;
 
+      // Always send the actual comment text. If only files (no text), send a dot.
+      const commentToSend = comment.trim() || (hasFiles ? '.' : '');
+
       const response = await fetch(`/api/task/${taskId}/comment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          comment: comment.trim() || (hasFiles ? '📎 Вложение' : ''),
+          comment: commentToSend,
           responsibleId,
           fileIds: hasFiles ? fileIds : undefined,
         }),
@@ -245,18 +269,13 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
         setComment('');
         setSelectedFiles([]);
         setFilePreviews([]);
-        // Save to localStorage for the indicator
         try {
           localStorage.setItem(`bigap-comment-sent-${taskId}`, String(Date.now()));
         } catch {}
-        // Don't unfocus in expanded mode
         if (!expanded) setFocused(false);
-        // Refresh comments to show the new one
-        setCommentsLoaded(false); // Force re-fetch
+        setCommentsLoaded(false);
         setTimeout(() => fetchComments(), 1500);
-        // Notify parent
         onCommentSent?.();
-        // Reset sent indicator after 60 seconds
         setTimeout(() => setSent(false), 60000);
       }
     } catch {
@@ -281,31 +300,21 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
       <div className={cn('space-y-3', className)}>
         {/* Comment history */}
         {comments.length > 0 && (
-          <div className="space-y-2 max-h-52 overflow-y-auto">
+          <div className="space-y-2 max-h-64 overflow-y-auto">
             {comments.map((c) => (
               <div
                 key={c.id}
-                className={cn(
-                  'text-xs rounded-lg px-2.5 py-2',
-                  c.isDashboard
-                    ? 'bg-teal-50 border border-teal-100'
-                    : 'bg-gray-50 border border-gray-100'
-                )}
+                className="text-xs bg-gray-50 border border-gray-100 rounded-lg px-3 py-2"
               >
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-medium text-gray-700">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-semibold text-gray-800">
                     {c.authorName.split(' ')[0]}
                   </span>
-                  <span className="text-gray-400">
+                  <span className="text-[10px] text-gray-400" title={formatCommentFullDate(c.date)}>
                     {formatCommentDate(c.date)}
                   </span>
-                  {c.isDashboard && (
-                    <span className="text-[10px] bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded-full">
-                      дашборд
-                    </span>
-                  )}
                 </div>
-                <p className="text-gray-600 whitespace-pre-wrap break-words">
+                <p className="text-gray-600 whitespace-pre-wrap break-words leading-relaxed">
                   {stripBbCode(c.text)}
                 </p>
               </div>
@@ -346,7 +355,7 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
           </div>
         )}
 
-        {/* Input area - image button always visible */}
+        {/* Input area */}
         <div className="flex items-start gap-1.5">
           <textarea
             ref={textareaRef}
@@ -369,7 +378,6 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
             onChange={handleFileSelect}
             className="hidden"
           />
-          {/* Image button - always clickable */}
           <button
             onClick={() => fileInputRef.current?.click()}
             className="shrink-0 mt-0.5 flex items-center justify-center h-6 w-6 rounded-full hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
@@ -378,7 +386,6 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
           >
             <ImageIcon className="h-3.5 w-3.5" />
           </button>
-          {/* Send button - visible when there's content or files */}
           {(comment.trim() || selectedFiles.length > 0) && (
             <button
               onClick={handleSend}
@@ -407,35 +414,18 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
   // COMPACT MODE (inside table row)
   // ═══════════════════════════════════════
 
-  // Not focused, not sent — show subtle placeholder
-  if (!focused && !sent) {
-    // Check localStorage for sent indicator
-    let showSent = false;
+  // Check localStorage for sent indicator
+  const getShowSent = () => {
     try {
       const ls = localStorage.getItem(`bigap-comment-sent-${taskId}`);
       if (ls && Date.now() - parseInt(ls) < 24 * 60 * 60 * 1000) {
-        showSent = true;
+        return true;
       }
     } catch {}
+    return false;
+  };
 
-    if (showSent) {
-      return (
-        <div className={cn('flex items-center gap-1.5 min-h-[24px]', className)}>
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0" title="Комментарий отправлен" />
-          <textarea
-            ref={textareaRef}
-            value={comment}
-            onChange={(e) => { setComment(e.target.value); }}
-            onFocus={() => setFocused(true)}
-            placeholder="Коммент."
-            rows={1}
-            className="w-full text-sm text-gray-700 bg-transparent border-0 outline-none resize-none placeholder:text-gray-300 cursor-pointer"
-            style={{ height: '24px', overflow: 'hidden' }}
-          />
-        </div>
-      );
-    }
-
+  if (!focused && !sent && !getShowSent()) {
     return (
       <div className={cn('flex items-center gap-1.5 min-h-[24px]', className)}>
         <textarea
@@ -452,8 +442,7 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
     );
   }
 
-  // Sent — show green dot
-  if (sent && !focused) {
+  if ((sent || getShowSent()) && !focused) {
     return (
       <div className={cn('flex items-center gap-1.5 min-h-[24px]', className)}>
         <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0" title="Комментарий отправлен" />
@@ -474,7 +463,6 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
   // Focused — expanded with send button and file attach
   return (
     <div className={cn('space-y-1.5 min-h-[24px]', className)} onClick={(e) => e.stopPropagation()}>
-      {/* File previews */}
       {selectedFiles.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {selectedFiles.map((f, i) => (
@@ -522,7 +510,6 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
           onChange={handleFileSelect}
           className="hidden"
         />
-        {/* Image button - always clickable */}
         <button
           onClick={() => fileInputRef.current?.click()}
           className="shrink-0 mt-0.5 flex items-center justify-center h-6 w-6 rounded-full hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
@@ -531,7 +518,6 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
         >
           <ImageIcon className="h-3.5 w-3.5" />
         </button>
-        {/* Send button - visible when there's content or files */}
         {(comment.trim() || selectedFiles.length > 0) && (
           <button
             onClick={handleSend}
@@ -558,7 +544,7 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
 
 /**
  * Small indicator component for task rows showing if a comment was sent from dashboard.
- * Uses localStorage only (no API calls per row to avoid rate limiting).
+ * Uses localStorage only (no API calls per row).
  */
 export function CommentSentIndicator({ taskId }: { taskId: string }) {
   const [hasSent, setHasSent] = useState(false);

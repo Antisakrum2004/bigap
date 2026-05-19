@@ -33,15 +33,11 @@ export function DashboardHeader({
             <Image
               src="/logo.png"
               alt="БИГАП"
-              width={40}
-              height={24}
-              className="h-8 w-auto object-contain"
+              width={112}
+              height={54}
+              className="h-9 w-auto object-contain"
               priority
             />
-            <div className="hidden sm:block">
-              <h1 className="text-lg font-bold text-gray-900 leading-tight">БИГАП</h1>
-              <p className="text-xs text-gray-500 leading-tight">Мониторинг задач</p>
-            </div>
           </div>
 
           {/* Center: Stats summary */}

@@ -82,7 +82,21 @@ export function TaskTable({
   isLoading,
   onTaskClick,
 }: TaskTableProps) {
-  const filteredTasks = tasks.filter((task) => shouldShowTask(statusFilter, task));
+  // Sort: newest deadlines first, tasks without deadline at the end
+  const filteredTasks = tasks
+    .filter((task) => shouldShowTask(statusFilter, task))
+    .sort((a, b) => {
+      // Both have deadlines - sort newest first (descending)
+      if (a.deadline && b.deadline) {
+        return new Date(b.deadline).getTime() - new Date(a.deadline).getTime();
+      }
+      // Only a has deadline - a goes first
+      if (a.deadline && !b.deadline) return -1;
+      // Only b has deadline - b goes first
+      if (!a.deadline && b.deadline) return 1;
+      // Neither has deadline - sort by ID descending
+      return parseInt(b.id) - parseInt(a.id);
+    });
 
   if (isLoading) {
     return (

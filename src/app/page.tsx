@@ -5,9 +5,9 @@ import { useQuery } from '@tanstack/react-query';
 import { DashboardHeader } from '@/components/bigap-dashboard/dashboard-header';
 import { TaskTable } from '@/components/bigap-dashboard/task-table';
 import { TaskModal } from '@/components/bigap-dashboard/task-modal';
-import { UsersMap, StagesMap, StatusFilter } from '@/lib/types';
+import { UsersMap, StagesMap } from '@/lib/types';
 import { getStatusType } from '@/components/bigap-dashboard/status-dot';
-import { getStageInfo, BITRIX_CONFIG } from '@/lib/bitrix-config';
+import { getStageInfo } from '@/lib/bitrix-config';
 import { AlertCircle } from 'lucide-react';
 
 interface FormattedTask {
@@ -41,7 +41,6 @@ interface UsersApiResponse {
 }
 
 export default function DashboardPage() {
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   // Fetch tasks
@@ -82,12 +81,6 @@ export default function DashboardPage() {
   const stagesMap: StagesMap = useMemo(() => {
     const map: StagesMap = {};
 
-    // Build from the hardcoded STAGE_MAP for the configured project
-    const groupId = String(BITRIX_CONFIG.projectId);
-    const project = groupId ? getStageInfo(groupId, '') : null;
-
-    // Add all stages from STAGE_MAP for the project
-    // We need to import STAGE_MAP directly
     for (const task of tasks) {
       const taskGroupId = String(task.groupId);
       const stageInfo = getStageInfo(taskGroupId, task.stageId);
@@ -190,48 +183,14 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Status filter pills */}
-        <div className="mb-4 flex items-center gap-1">
-          {([
-            { key: 'all', label: 'Все' },
-            { key: 'in_progress', label: 'В работе' },
-            { key: 'overdue', label: 'Просрочено' },
-            { key: 'review', label: 'На проверке' },
-            { key: 'completed', label: 'Завершено' },
-          ] as { key: StatusFilter; label: string }[]).map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setStatusFilter(key)}
-              className={cn(
-                'h-8 px-3 text-xs font-medium rounded-full transition-colors whitespace-nowrap',
-                statusFilter === key
-                  ? 'bg-teal-50 text-teal-700 hover:bg-teal-100'
-                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
-              )}
-            >
-              {label}
-              {taskCounts[key] > 0 && (
-                <span
-                  className={cn(
-                    'ml-1.5 inline-flex items-center justify-center h-4 min-w-[1rem] px-1 rounded-full text-[10px] font-semibold',
-                    statusFilter === key
-                      ? 'bg-teal-200 text-teal-800'
-                      : 'bg-gray-200 text-gray-600'
-                  )}
-                >
-                  {taskCounts[key]}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+
 
         {/* Task table */}
         <TaskTable
           tasks={tasks}
           usersMap={usersMap}
           stagesMap={stagesMap}
-          statusFilter={statusFilter}
+          statusFilter="all"
           isLoading={tasksLoading}
           onTaskClick={(id) => setSelectedTaskId(id)}
         />

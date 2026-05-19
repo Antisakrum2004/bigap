@@ -2,12 +2,12 @@
 
 import { TableCell, TableRow } from '@/components/ui/table';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { StatusDot, getStatusType } from './status-dot';
+import { StatusDot } from './status-dot';
 import { StageBadge } from './stage-badge';
 import { DeadlineBadge } from './deadline-badge';
 import { CreatedDateBadge } from './created-date-badge';
 import { CommentCell, CommentSentIndicator } from './comment-cell';
-import { UsersMap, StagesMap, StatusFilter } from '@/lib/types';
+import { UsersMap, StagesMap } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 interface TaskRowProps {
@@ -29,29 +29,7 @@ interface TaskRowProps {
   };
   usersMap: UsersMap;
   stagesMap: StagesMap;
-  statusFilter: StatusFilter;
   onClick: () => void;
-}
-
-export function shouldShowTask(statusFilter: StatusFilter, task: TaskRowProps['task']): boolean {
-  const statusType = getStatusType(task.deadline, task.realStatus);
-
-  switch (statusFilter) {
-    case 'all':
-      return true;
-    case 'new':
-      return task.realStatus === 1;
-    case 'in_progress':
-      return task.realStatus === 3 && statusType !== 'overdue';
-    case 'overdue':
-      return statusType === 'overdue';
-    case 'review':
-      return task.realStatus === 4;
-    case 'completed':
-      return task.realStatus === 5;
-    default:
-      return true;
-  }
 }
 
 function formatDuration(minutes: number): string {
@@ -63,7 +41,7 @@ function formatDuration(minutes: number): string {
   return `${hours}ч ${mins}м`;
 }
 
-export function TaskRow({ task, usersMap, stagesMap, statusFilter: _statusFilter, onClick }: TaskRowProps) {
+export function TaskRow({ task, usersMap, stagesMap, onClick }: TaskRowProps) {
   const user = usersMap[task.responsibleId];
   const stage = stagesMap[task.stageId];
 
@@ -158,7 +136,7 @@ export function TaskRow({ task, usersMap, stagesMap, statusFilter: _statusFilter
 }
 
 /* Mobile card version */
-export function TaskCard({ task, usersMap, stagesMap, onClick }: Omit<TaskRowProps, 'statusFilter'>) {
+export function TaskCard({ task, usersMap, stagesMap, onClick }: TaskRowProps) {
   const user = usersMap[task.responsibleId];
   const stage = stagesMap[task.stageId];
 

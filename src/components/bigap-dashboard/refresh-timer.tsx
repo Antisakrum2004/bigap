@@ -2,9 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { BITRIX_CONFIG } from '@/lib/bitrix-config';
 
 interface RefreshTimerProps {
   lastUpdated: Date | null;
@@ -15,7 +13,9 @@ interface RefreshTimerProps {
 
 export function RefreshTimer({ lastUpdated, isLoading, onRefresh, className }: RefreshTimerProps) {
   const [tick, setTick] = useState(0);
+  const [justClicked, setJustClicked] = useState(false);
   const refreshStartRef = useRef(Date.now());
+  const AUTO_REFRESH_SEC = 30 * 60; // 30 minutes
 
   // Reset the refresh start time when lastUpdated changes
   const prevLastUpdatedRef = useRef(lastUpdated);
@@ -32,15 +32,13 @@ export function RefreshTimer({ lastUpdated, isLoading, onRefresh, className }: R
     return () => clearInterval(interval);
   }, []);
 
-  const refreshIntervalSec = BITRIX_CONFIG.refreshInterval / 1000;
   const elapsed = (Date.now() - refreshStartRef.current) / 1000;
-  const remaining = Math.max(0, Math.floor(refreshIntervalSec - elapsed));
+  const remaining = Math.max(0, Math.floor(AUTO_REFRESH_SEC - elapsed));
 
   // Auto-refresh when countdown reaches 0
   const hasTriggeredRef = useRef(false);
   if (remaining <= 0 && !hasTriggeredRef.current && !isLoading) {
     hasTriggeredRef.current = true;
-    // Use setTimeout to avoid calling during render
     setTimeout(() => {
       onRefresh();
     }, 0);
@@ -52,7 +50,6 @@ export function RefreshTimer({ lastUpdated, isLoading, onRefresh, className }: R
   const minutes = Math.floor(remaining / 60);
   const seconds = remaining % 60;
 
-  // Suppress the unused tick warning
   void tick;
 
   const formatLastUpdated = () => {
@@ -65,7 +62,10 @@ export function RefreshTimer({ lastUpdated, isLoading, onRefresh, className }: R
 
   const handleManualRefresh = useCallback(() => {
     refreshStartRef.current = Date.now();
+    setJustClicked(true);
     onRefresh();
+    // Reset click animation after 1s
+    setTimeout(() => setJustClicked(false), 1000);
   }, [onRefresh]);
 
   return (
@@ -78,16 +78,27 @@ export function RefreshTimer({ lastUpdated, isLoading, onRefresh, className }: R
         <RefreshCw className="h-3 w-3" />
         <span>через {minutes}:{seconds.toString().padStart(2, '0')}</span>
       </div>
-      <Button
-        variant="outline"
-        size="sm"
+      <button
         onClick={handleManualRefresh}
         disabled={isLoading}
-        className="h-8 gap-1.5 text-xs"
+        className={cn(
+          'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border text-xs font-medium transition-all duration-200',
+          'focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-1',
+          justClicked
+            ? 'bg-teal-100 text-teal-700 border-teal-300 scale-95'
+            : isLoading
+            ? 'bg-gray-50 text-gray-400 border-gray-200 cursor-wait'
+            : 'bg-white text-gray-600 border-gray-200 hover:bg-teal-50 hover:text-teal-700 hover:border-teal-200 active:scale-95 cursor-pointer'
+        )}
       >
-        <RefreshCw className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
-        <span className="hidden sm:inline">Обновить</span>
-      </Button>
+        <RefreshCw className={cn(
+          'h-3.5 w-3.5 transition-transform',
+          isLoading && 'animate-spin'
+        )} />
+        <span className="hidden sm:inline">
+          {isLoading ? 'Обновляю...' : 'Обновить'}
+        </span>
+      </button>
     </div>
   );
 }

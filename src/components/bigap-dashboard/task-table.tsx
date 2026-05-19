@@ -1,17 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TaskRow, TaskCard, shouldShowTask } from './task-row';
-import { UsersMap, StagesMap, StatusFilter } from '@/lib/types';
+import { TaskRow, TaskCard } from './task-row';
+import { UsersMap, StagesMap } from '@/lib/types';
 import { Inbox, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -36,21 +35,11 @@ interface TaskTableProps {
   tasks: FormattedTask[];
   usersMap: UsersMap;
   stagesMap: StagesMap;
-  statusFilter: StatusFilter;
+  stageFilter: string;
   isLoading: boolean;
   onTaskClick: (taskId: string) => void;
-  onFilterChange?: (filter: StatusFilter) => void;
+  onFilterChange?: (filter: string) => void;
 }
-
-// Status filter options
-const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
-  { value: 'all', label: 'Все' },
-  { value: 'new', label: 'Новая' },
-  { value: 'in_progress', label: 'В работе' },
-  { value: 'review', label: 'На проверке' },
-  { value: 'completed', label: 'Готова' },
-  { value: 'overdue', label: 'Просрочено' },
-];
 
 function LoadingSkeleton() {
   return (
@@ -85,40 +74,70 @@ export function TaskTable({
   tasks,
   usersMap,
   stagesMap,
-  statusFilter,
+  stageFilter,
   isLoading,
   onTaskClick,
   onFilterChange,
 }: TaskTableProps) {
   const [filterOpen, setFilterOpen] = useState(false);
 
-  // Sort: newest deadlines first, tasks without deadline at the end
-  const filteredTasks = tasks
-    .filter((task) => shouldShowTask(statusFilter, task))
-    .sort((a, b) => {
-      if (a.deadline && b.deadline) {
-        return new Date(b.deadline).getTime() - new Date(a.deadline).getTime();
+  // Build stage filter options dynamically from actual tasks
+  const stageOptions = useMemo(() => {
+    // Group tasks by stageId → count + title
+    const stageGroups: Record<string, { title: string; count: number; sort: number }> = {};
+
+    for (const task of tasks) {
+      const sid = task.stageId || '0';
+      if (!stageGroups[sid]) {
+        const stageInfo = stagesMap[sid];
+        const title = stageInfo?.title || (sid === '0' ? 'Новые' : sid);
+        // Sort order based on stage title
+        const sortMap: Record<string, number> = {
+          'Новые': 100,
+          'Оценка': 200,
+          'Работа': 300,
+          'Правки': 400,
+          'Тест': 500,
+          'Релиз': 600,
+          'Готово': 700,
+          'Пауза': 800,
+          'Оплата': 900,
+        };
+        stageGroups[sid] = {
+          title,
+          count: 0,
+          sort: sortMap[title] || 999,
+        };
       }
-      if (a.deadline && !b.deadline) return -1;
-      if (!a.deadline && b.deadline) return 1;
-      return parseInt(b.id) - parseInt(a.id);
-    });
+      stageGroups[sid].count++;
+    }
 
-  // Count tasks per status
-  const statusCounts = {
-    all: tasks.length,
-    new: tasks.filter(t => t.realStatus === 1).length,
-    in_progress: tasks.filter(t => t.realStatus === 3).length,
-    review: tasks.filter(t => t.realStatus === 4).length,
-    completed: tasks.filter(t => t.realStatus === 5).length,
-    overdue: tasks.filter(t => {
-      if (t.realStatus === 5) return false;
-      if (!t.deadline) return false;
-      return new Date(t.deadline) < new Date();
-    }).length,
-  };
+    // Sort by sort order
+    const sorted = Object.entries(stageGroups).sort((a, b) => a[1].sort - b[1].sort);
 
-  const currentLabel = STATUS_OPTIONS.find(o => o.value === statusFilter)?.label || 'Все';
+    return [
+      { id: 'all', title: 'Все', count: tasks.length },
+      ...sorted.map(([id, { title, count }]) => ({ id, title, count })),
+    ];
+  }, [tasks, stagesMap]);
+
+  // Filter tasks by selected stage
+  const filteredTasks = useMemo(() => {
+    return tasks
+      .filter((task) => {
+        if (stageFilter === 'all') return true;
+        const sid = task.stageId || '0';
+        return sid === stageFilter;
+      })
+      .sort((a, b) => {
+        if (a.deadline && b.deadline) {
+          return new Date(b.deadline).getTime() - new Date(a.deadline).getTime();
+        }
+        if (a.deadline && !b.deadline) return -1;
+        if (!a.deadline && b.deadline) return 1;
+        return parseInt(b.id) - parseInt(a.id);
+      });
+  }, [tasks, stageFilter]);
 
   if (isLoading) {
     return (
@@ -152,7 +171,7 @@ export function TaskTable({
               <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider w-10" />
               <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Задача</TableHead>
               <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">
-                {/* Status filter dropdown */}
+                {/* Stage filter dropdown */}
                 <div className="relative">
                   <button
                     onClick={() => setFilterOpen(!filterOpen)}
@@ -165,24 +184,24 @@ export function TaskTable({
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setFilterOpen(false)} />
                       <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[160px]">
-                        {STATUS_OPTIONS.map(opt => (
+                        {stageOptions.map(opt => (
                           <button
-                            key={opt.value}
+                            key={opt.id}
                             onClick={() => {
-                              onFilterChange?.(opt.value);
+                              onFilterChange?.(opt.id);
                               setFilterOpen(false);
                             }}
                             className={cn(
                               'w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 transition-colors flex items-center justify-between',
-                              statusFilter === opt.value && 'text-teal-600 font-medium bg-teal-50/50'
+                              stageFilter === opt.id && 'text-teal-600 font-medium bg-teal-50/50'
                             )}
                           >
-                            <span>{opt.label}</span>
+                            <span>{opt.title}</span>
                             <span className={cn(
                               'text-[10px] ml-2',
-                              statusFilter === opt.value ? 'text-teal-500' : 'text-gray-400'
+                              stageFilter === opt.id ? 'text-teal-500' : 'text-gray-400'
                             )}>
-                              {statusCounts[opt.value]}
+                              {opt.count}
                             </span>
                           </button>
                         ))}
@@ -205,7 +224,6 @@ export function TaskTable({
                 task={task}
                 usersMap={usersMap}
                 stagesMap={stagesMap}
-                statusFilter={statusFilter}
                 onClick={() => onTaskClick(task.id)}
               />
             ))}
@@ -216,20 +234,20 @@ export function TaskTable({
 
       {/* Mobile cards */}
       <div className="md:hidden space-y-3">
-        {/* Mobile filter dropdown */}
+        {/* Mobile filter chips */}
         <div className="flex items-center gap-2 flex-wrap">
-          {STATUS_OPTIONS.map(opt => (
+          {stageOptions.map(opt => (
             <button
-              key={opt.value}
-              onClick={() => onFilterChange?.(opt.value)}
+              key={opt.id}
+              onClick={() => onFilterChange?.(opt.id)}
               className={cn(
                 'text-xs px-2.5 py-1 rounded-full border transition-colors',
-                statusFilter === opt.value
+                stageFilter === opt.id
                   ? 'bg-teal-50 text-teal-700 border-teal-200'
                   : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
               )}
             >
-              {opt.label} ({statusCounts[opt.value]})
+              {opt.title} ({opt.count})
             </button>
           ))}
         </div>

@@ -5,9 +5,11 @@ import { useQuery } from '@tanstack/react-query';
 import { DashboardHeader } from '@/components/bigap-dashboard/dashboard-header';
 import { TaskTable } from '@/components/bigap-dashboard/task-table';
 import { TaskModal } from '@/components/bigap-dashboard/task-modal';
-import { UsersMap, StagesMap } from '@/lib/types';
+import { GanttChart } from '@/components/bigap-dashboard/gantt-chart';
+import { UsersMap, StagesMap, StatusFilter } from '@/lib/types';
 import { getStageInfo } from '@/lib/bitrix-config';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, LayoutList, BarChart3 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface FormattedTask {
   id: string;
@@ -39,8 +41,12 @@ interface UsersApiResponse {
   error?: string;
 }
 
+type ViewMode = 'table' | 'gantt';
+
 export default function DashboardPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
 
   // Fetch tasks
   const {
@@ -159,15 +165,53 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Task table */}
-        <TaskTable
-          tasks={tasks}
-          usersMap={usersMap}
-          stagesMap={stagesMap}
-          statusFilter="all"
-          isLoading={tasksLoading}
-          onTaskClick={(id) => setSelectedTaskId(id)}
-        />
+        {/* View mode toggle */}
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => setViewMode('table')}
+            className={cn(
+              'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors',
+              viewMode === 'table'
+                ? 'bg-teal-50 text-teal-700 border-teal-200'
+                : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+            )}
+          >
+            <LayoutList className="h-3.5 w-3.5" />
+            Таблица
+          </button>
+          <button
+            onClick={() => setViewMode('gantt')}
+            className={cn(
+              'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors',
+              viewMode === 'gantt'
+                ? 'bg-teal-50 text-teal-700 border-teal-200'
+                : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+            )}
+          >
+            <BarChart3 className="h-3.5 w-3.5" />
+            Шкала
+          </button>
+        </div>
+
+        {/* Task content */}
+        {viewMode === 'table' ? (
+          <TaskTable
+            tasks={tasks}
+            usersMap={usersMap}
+            stagesMap={stagesMap}
+            statusFilter={statusFilter}
+            isLoading={tasksLoading}
+            onTaskClick={(id) => setSelectedTaskId(id)}
+            onFilterChange={setStatusFilter}
+          />
+        ) : (
+          <GanttChart
+            tasks={tasks}
+            usersMap={usersMap}
+            stagesMap={stagesMap}
+            onTaskClick={(id) => setSelectedTaskId(id)}
+          />
+        )}
       </main>
 
       {/* Task detail modal */}

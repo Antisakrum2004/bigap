@@ -61,7 +61,7 @@ export interface StagesMap {
   };
 }
 
-export type StatusFilter = 'all' | 'in_progress' | 'overdue' | 'review' | 'completed';
+export type StatusFilter = 'all' | 'new' | 'in_progress' | 'overdue' | 'review' | 'completed';
 
 export interface DashboardState {
   statusFilter: StatusFilter;

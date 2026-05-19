@@ -6,7 +6,7 @@ import { StatusDot, getStatusType } from './status-dot';
 import { StageBadge } from './stage-badge';
 import { DeadlineBadge } from './deadline-badge';
 import { CreatedDateBadge } from './created-date-badge';
-import { CommentCell } from './comment-cell';
+import { CommentCell, CommentSentIndicator } from './comment-cell';
 import { UsersMap, StagesMap, StatusFilter } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -39,6 +39,8 @@ export function shouldShowTask(statusFilter: StatusFilter, task: TaskRowProps['t
   switch (statusFilter) {
     case 'all':
       return true;
+    case 'new':
+      return task.realStatus === 1;
     case 'in_progress':
       return task.realStatus === 3 && statusType !== 'overdue';
     case 'overdue':
@@ -50,6 +52,15 @@ export function shouldShowTask(statusFilter: StatusFilter, task: TaskRowProps['t
     default:
       return true;
   }
+}
+
+function formatDuration(minutes: number): string {
+  if (!minutes || minutes === 0) return '—';
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours === 0) return `${mins}м`;
+  if (mins === 0) return `${hours}ч`;
+  return `${hours}ч ${mins}м`;
 }
 
 export function TaskRow({ task, usersMap, stagesMap, statusFilter: _statusFilter, onClick }: TaskRowProps) {
@@ -73,9 +84,12 @@ export function TaskRow({ task, usersMap, stagesMap, statusFilter: _statusFilter
       )}
       onClick={onClick}
     >
-      {/* ID */}
+      {/* ID + comment sent indicator */}
       <TableCell className="text-gray-400 text-sm font-mono w-20">
-        #{task.id}
+        <div className="flex items-center gap-1.5">
+          #{task.id}
+          <CommentSentIndicator taskId={task.id} />
+        </div>
       </TableCell>
 
       {/* Status dot */}
@@ -125,6 +139,16 @@ export function TaskRow({ task, usersMap, stagesMap, statusFilter: _statusFilter
         <CreatedDateBadge createdDate={task.createdDate} />
       </TableCell>
 
+      {/* Time in work */}
+      <TableCell className="w-20">
+        <span className={cn(
+          'text-xs',
+          task.durationFact > 0 ? 'text-gray-600' : 'text-gray-300'
+        )}>
+          {formatDuration(task.durationFact)}
+        </span>
+      </TableCell>
+
       {/* Comment */}
       <TableCell className="w-48" onClick={(e) => e.stopPropagation()}>
         <CommentCell taskId={task.id} responsibleId={task.responsibleId} />
@@ -154,6 +178,7 @@ export function TaskCard({ task, usersMap, stagesMap, onClick }: Omit<TaskRowPro
         <div className="flex items-center gap-2">
           <StatusDot deadline={task.deadline} realStatus={task.realStatus} />
           <span className="text-xs text-gray-400 font-mono">#{task.id}</span>
+          <CommentSentIndicator taskId={task.id} />
         </div>
         <StageBadge stageId={task.stageId} stageTitle={stage?.title} stageColor={stage?.color} />
       </div>
@@ -178,6 +203,11 @@ export function TaskCard({ task, usersMap, stagesMap, onClick }: Omit<TaskRowPro
         <div className="flex items-center gap-2">
           <DeadlineBadge deadline={task.deadline} />
           <CreatedDateBadge createdDate={task.createdDate} />
+          {task.durationFact > 0 && (
+            <span className="text-[10px] text-gray-400">
+              {formatDuration(task.durationFact)}
+            </span>
+          )}
         </div>
       </div>
 

@@ -26,6 +26,7 @@ interface TaskRowProps {
     priority: number;
     durationFact: number;
     tags: string[];
+    chatId?: number;
   };
   usersMap: UsersMap;
   stagesMap: StagesMap;
@@ -129,7 +130,7 @@ export function TaskRow({ task, usersMap, stagesMap, onClick }: TaskRowProps) {
 
       {/* Comment */}
       <TableCell className="w-48" onClick={(e) => e.stopPropagation()}>
-        <CommentCell taskId={task.id} responsibleId={task.responsibleId} />
+        <CommentCell taskId={task.id} responsibleId={task.responsibleId} chatId={task.chatId} />
       </TableCell>
     </TableRow>
   );
@@ -191,7 +192,7 @@ export function TaskCard({ task, usersMap, stagesMap, onClick }: TaskRowProps) {
 
       {/* Comment */}
       <div onClick={(e) => e.stopPropagation()}>
-        <CommentCell taskId={task.id} responsibleId={task.responsibleId} />
+        <CommentCell taskId={task.id} responsibleId={task.responsibleId} chatId={task.chatId} />
       </div>
     </div>
   );

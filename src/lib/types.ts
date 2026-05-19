@@ -12,6 +12,7 @@ export interface BitrixTask {
   priority: number;
   durationFact: number;
   tags?: string[];
+  chatId?: number;
   // Computed fields
   responsibleName?: string;
   responsibleLastName?: string;

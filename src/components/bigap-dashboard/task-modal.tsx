@@ -8,10 +8,9 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { StatusDot, getStatusInfo } from './status-dot';
+import { StatusDot } from './status-dot';
 import { StageBadge } from './stage-badge';
 import { DeadlineBadge } from './deadline-badge';
 import { CommentCell } from './comment-cell';
@@ -76,7 +75,6 @@ export function TaskModal({ task, usersMap, stagesMap, open, onOpenChange }: Tas
 
   const user = usersMap[task.responsibleId];
   const stage = stagesMap[task.stageId];
-  const statusInfo = getStatusInfo(task.deadline, task.realStatus);
   // First name only
   const assigneeName = user
     ? user.name || `#${task.responsibleId}`
@@ -100,20 +98,6 @@ export function TaskModal({ task, usersMap, stagesMap, open, onOpenChange }: Tas
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-400 font-mono">#{task.id}</span>
             <StatusDot deadline={task.deadline} realStatus={task.realStatus} />
-            <Badge
-              variant="outline"
-              className={cn(
-                'text-xs',
-                statusInfo.type === 'overdue' && 'bg-red-50 text-red-700 border-red-200',
-                statusInfo.type === 'today' && 'bg-amber-50 text-amber-700 border-amber-200',
-                statusInfo.type === 'in_progress' && 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                statusInfo.type === 'review' && 'bg-blue-50 text-blue-700 border-blue-200',
-                statusInfo.type === 'completed' && 'bg-green-50 text-green-700 border-green-200',
-                statusInfo.type === 'new' && 'bg-gray-50 text-gray-600 border-gray-200',
-              )}
-            >
-              {statusInfo.label}
-            </Badge>
           </div>
           <DialogTitle className="text-lg font-semibold text-gray-900 pr-8">
             {task.title}
@@ -250,6 +234,23 @@ export function TaskModal({ task, usersMap, stagesMap, open, onOpenChange }: Tas
           <div className="space-y-2 pt-2 border-t">
             <h4 className="text-sm font-medium text-gray-700">Комментарий</h4>
             <CommentCell taskId={task.id} />
+          </div>
+
+          {/* Bitrix link */}
+          <div className="pt-3 border-t">
+            <a
+              href={`https://1c-cms.bitrix24.ru/company/personal/user/${task.responsibleId}/tasks/task/view/${task.id}/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-teal-600 transition-colors"
+            >
+              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+              Открыть в Bitrix24
+            </a>
           </div>
         </div>
       </DialogContent>

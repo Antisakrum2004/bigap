@@ -12,11 +12,13 @@ interface CommentItem {
   text: string;
   date: string;
   isDashboard: boolean;
+  hasFiles?: boolean;
 }
 
 interface CommentCellProps {
   taskId: string;
   responsibleId?: number;
+  chatId?: number;
   className?: string;
   expanded?: boolean;
   onCommentSent?: () => void;
@@ -92,7 +94,7 @@ function stripBbCode(text: string): string {
     .trim();
 }
 
-export function CommentCell({ taskId, responsibleId, className, expanded = false, onCommentSent }: CommentCellProps) {
+export function CommentCell({ taskId, responsibleId, chatId, className, expanded = false, onCommentSent }: CommentCellProps) {
   const [comment, setComment] = useState('');
   const [focused, setFocused] = useState(false);
   const [sending, setSending] = useState(false);
@@ -121,7 +123,10 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
     if (fetchAbortRef.current) return;
     setLoadingComments(true);
     try {
-      const response = await fetch(`/api/task/${taskId}/comments`);
+      const url = chatId
+        ? `/api/task/${taskId}/comments?chatId=${chatId}`
+        : `/api/task/${taskId}/comments`;
+      const response = await fetch(url);
       if (response.ok && !fetchAbortRef.current) {
         const data = await response.json();
         setComments(data.comments || []);
@@ -134,7 +139,7 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
         setLoadingComments(false);
       }
     }
-  }, [taskId]);
+  }, [taskId, chatId]);
 
   // When showing expanded mode, fetch comments
   useEffect(() => {
@@ -277,6 +282,7 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
           comment: commentToSend,
           responsibleId,
           fileIds: hasFiles ? fileIds : undefined,
+          chatId: chatId,
         }),
       });
 
@@ -291,7 +297,7 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
         if (!expanded) setFocused(false);
         // Refresh comments from server to replace optimistic comment with real data
         setCommentsLoaded(false);
-        setTimeout(() => fetchComments(), 1000);
+        setTimeout(() => fetchComments(), 1500);
         onCommentSent?.();
         setTimeout(() => setSent(false), 60000);
       } else {
@@ -308,7 +314,7 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
     } finally {
       setSending(false);
     }
-  }, [comment, sending, taskId, responsibleId, uploadFiles, fetchComments, selectedFiles, expanded, onCommentSent]);
+  }, [comment, sending, taskId, responsibleId, chatId, uploadFiles, fetchComments, selectedFiles, expanded, onCommentSent]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -336,6 +342,7 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
                 </div>
                 <p className="text-gray-700 whitespace-pre-wrap break-words leading-relaxed">
                   {stripBbCode(c.text)}
+                  {c.hasFiles && <span className="text-teal-500 ml-1">📎</span>}
                 </p>
               </div>
             ))}
@@ -375,8 +382,8 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
           </div>
         )}
 
-        {/* Input area */}
-        <div className="flex items-start gap-1.5">
+        {/* Input area — textarea + buttons inside a bordered container */}
+        <div className="relative border border-gray-200 rounded-lg bg-gray-50 focus-within:border-teal-300 focus-within:ring-1 focus-within:ring-teal-200">
           <textarea
             ref={textareaRef}
             value={comment}
@@ -387,45 +394,47 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
             placeholder="Написать комментарий..."
             rows={1}
             autoFocus
-            className="flex-1 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded px-2 py-1 outline-none resize-none focus:border-teal-300 focus:ring-1 focus:ring-teal-200 min-w-0"
+            className="w-full text-sm text-gray-700 bg-transparent px-2.5 py-1.5 outline-none resize-none min-w-0"
             style={{ overflow: 'hidden' }}
           />
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={handleFileSelect}
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="shrink-0 mt-0.5 flex items-center justify-center h-6 w-6 rounded-full hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
-            title="Прикрепить изображение"
-            type="button"
-          >
-            <ImageIcon className="h-3.5 w-3.5" />
-          </button>
-          {(comment.trim() || selectedFiles.length > 0) && (
+          <div className="flex items-center gap-1 px-1.5 pb-1.5">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFileSelect}
+              className="hidden"
+            />
             <button
-              onClick={handleSend}
-              disabled={sending || uploadingFiles}
-              className={cn(
-                'shrink-0 mt-0.5 flex items-center justify-center h-6 w-6 rounded-full transition-colors',
-                sending || uploadingFiles
-                  ? 'bg-gray-200 text-gray-400'
-                  : 'bg-teal-500 text-white hover:bg-teal-600'
-              )}
-              title={uploadingFiles ? 'Загрузка файлов...' : 'Отправить'}
+              onClick={() => fileInputRef.current?.click()}
+              className="shrink-0 flex items-center justify-center h-6 w-6 rounded-full hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
+              title="Прикрепить изображение"
               type="button"
             >
-              <Check className="h-3.5 w-3.5" />
+              <ImageIcon className="h-3.5 w-3.5" />
             </button>
-          )}
+            {(comment.trim() || selectedFiles.length > 0) && (
+              <button
+                onClick={handleSend}
+                disabled={sending || uploadingFiles}
+                className={cn(
+                  'shrink-0 flex items-center justify-center h-6 w-6 rounded-full transition-colors',
+                  sending || uploadingFiles
+                    ? 'bg-gray-200 text-gray-400'
+                    : 'bg-teal-500 text-white hover:bg-teal-600'
+                )}
+                title={uploadingFiles ? 'Загрузка файлов...' : 'Отправить'}
+                type="button"
+              >
+                <Check className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {uploadingFiles && (
+              <span className="text-[10px] text-amber-600 ml-1">Загрузка...</span>
+            )}
+          </div>
         </div>
-        {uploadingFiles && (
-          <p className="text-xs text-amber-600">Загрузка файлов...</p>
-        )}
       </div>
     );
   }
@@ -481,84 +490,86 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
   }
 
   // Focused — expanded with send button and file attach
-  // Layout: textarea on top, action buttons below — keeps everything within the cell
+  // All controls stay inside the cell boundaries
   return (
-    <div className={cn('min-h-[24px]', className)} onClick={(e) => e.stopPropagation()}>
-      <textarea
-        ref={textareaRef}
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        onBlur={() => { if (!comment.trim() && selectedFiles.length === 0) setFocused(false); }}
-        onKeyDown={handleKeyDown}
-        placeholder="Написать комментарий..."
-        rows={1}
-        autoFocus
-        className="w-full text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded px-2 py-1 outline-none resize-none focus:border-teal-300 focus:ring-1 focus:ring-teal-200"
-        style={{ overflow: 'hidden' }}
-      />
-
-      {selectedFiles.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-1">
-          {selectedFiles.map((f, i) => (
-            <div key={i} className="relative group">
-              {f.type.startsWith('image/') && filePreviews[i] ? (
-                <img
-                  src={filePreviews[i]}
-                  alt={f.name}
-                  className="h-8 w-8 object-cover rounded border border-gray-200"
-                />
-              ) : (
-                <div className="h-8 w-8 rounded border border-gray-200 bg-gray-100 flex items-center justify-center">
-                  <Paperclip className="h-3 w-3 text-gray-400" />
-                </div>
-              )}
-              <button
-                onClick={() => removeFile(i)}
-                className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <X className="h-2 w-2" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="flex items-center gap-1 mt-1">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={handleFileSelect}
-          className="hidden"
+    <div className={cn('min-h-[24px] w-full', className)} onClick={(e) => e.stopPropagation()}>
+      <div className="border border-gray-200 rounded bg-gray-50 focus-within:border-teal-300 focus-within:ring-1 focus-within:ring-teal-200">
+        <textarea
+          ref={textareaRef}
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          onBlur={() => { if (!comment.trim() && selectedFiles.length === 0) setFocused(false); }}
+          onKeyDown={handleKeyDown}
+          placeholder="Написать комментарий..."
+          rows={1}
+          autoFocus
+          className="w-full text-sm text-gray-700 bg-transparent px-2 py-1 outline-none resize-none min-w-0"
+          style={{ overflow: 'hidden' }}
         />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="flex items-center justify-center h-5 w-5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
-          title="Прикрепить изображение"
-          type="button"
-        >
-          <ImageIcon className="h-3 w-3" />
-        </button>
-        {(comment.trim() || selectedFiles.length > 0) && (
+
+        {selectedFiles.length > 0 && (
+          <div className="flex flex-wrap gap-1 px-2 pb-1">
+            {selectedFiles.map((f, i) => (
+              <div key={i} className="relative group">
+                {f.type.startsWith('image/') && filePreviews[i] ? (
+                  <img
+                    src={filePreviews[i]}
+                    alt={f.name}
+                    className="h-8 w-8 object-cover rounded border border-gray-200"
+                  />
+                ) : (
+                  <div className="h-8 w-8 rounded border border-gray-200 bg-gray-100 flex items-center justify-center">
+                    <Paperclip className="h-3 w-3 text-gray-400" />
+                  </div>
+                )}
+                <button
+                  onClick={() => removeFile(i)}
+                  className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="h-2 w-2" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center gap-1 px-1.5 pb-1">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleFileSelect}
+            className="hidden"
+          />
           <button
-            onClick={handleSend}
-            disabled={sending || uploadingFiles}
-            className={cn(
-              'flex items-center justify-center h-5 w-5 rounded-full transition-colors',
-              sending || uploadingFiles
-                ? 'bg-gray-200 text-gray-400'
-                : 'bg-teal-500 text-white hover:bg-teal-600'
-            )}
-            title={uploadingFiles ? 'Загрузка файлов...' : 'Отправить'}
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center justify-center h-5 w-5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
+            title="Прикрепить изображение"
             type="button"
           >
-            <Check className="h-3 w-3" />
+            <ImageIcon className="h-3 w-3" />
           </button>
-        )}
-        {uploadingFiles && (
-          <span className="text-[10px] text-amber-600">Загрузка...</span>
-        )}
+          {(comment.trim() || selectedFiles.length > 0) && (
+            <button
+              onClick={handleSend}
+              disabled={sending || uploadingFiles}
+              className={cn(
+                'flex items-center justify-center h-5 w-5 rounded-full transition-colors',
+                sending || uploadingFiles
+                  ? 'bg-gray-200 text-gray-400'
+                  : 'bg-teal-500 text-white hover:bg-teal-600'
+              )}
+              title={uploadingFiles ? 'Загрузка файлов...' : 'Отправить'}
+              type="button"
+            >
+              <Check className="h-3 w-3" />
+            </button>
+          )}
+          {uploadingFiles && (
+            <span className="text-[10px] text-amber-600">Загрузка...</span>
+          )}
+        </div>
       </div>
     </div>
   );

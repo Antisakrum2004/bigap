@@ -24,6 +24,7 @@ interface FormattedTask {
   priority: number;
   durationFact: number;
   tags: string[];
+  chatId?: number;
 }
 
 interface TasksApiResponse {

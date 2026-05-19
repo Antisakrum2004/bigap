@@ -34,6 +34,7 @@ interface TaskModalProps {
     priority: number;
     durationFact: number;
     tags: string[];
+    chatId?: number;
   } | null;
   usersMap: UsersMap;
   stagesMap: StagesMap;
@@ -233,7 +234,7 @@ export function TaskModal({ task, usersMap, stagesMap, open, onOpenChange }: Tas
           {/* Comments — history + input */}
           <div className="space-y-2 pt-2 border-t">
             <h4 className="text-sm font-medium text-gray-700">Комментарии</h4>
-            <CommentCell taskId={task.id} responsibleId={task.responsibleId} expanded />
+            <CommentCell taskId={task.id} responsibleId={task.responsibleId} chatId={task.chatId} expanded />
           </div>
 
           {/* Bitrix link */}

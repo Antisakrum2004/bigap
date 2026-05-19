@@ -4,13 +4,17 @@ import { bitrixApi } from '@/lib/bitrix-api';
 /**
  * POST /api/task/[id]/comment
  * Adds a comment to a Bitrix24 task from the Bigap dashboard.
- * Uses task.comment.add (new API — comments appear in the new task chat).
+ *
+ * Strategy:
+ * - WITHOUT files: use task.comment.add (creates comment visible in both old + new chat)
+ * - WITH files: use im.disk.file.commit (sends file+text to the IM chat with inline image)
+ *   Then ALSO use task.comment.add for text-only comment (so it appears in old comment list too)
  *
  * IMPORTANT:
- * - The parameter for comment text is POST_MESSAGE (not commentText).
- * - Files are embedded via [DISK FILE ID=nX] BBCode tags inside POST_MESSAGE.
- *   This is the ONLY method that makes images appear inline in the chat.
- *   UF_FORUM_MESSAGE_DOC does NOT render images inline.
+ * - task.comment.add requires BOTH commentText AND POST_MESSAGE parameters.
+ *   Only commentText is stored/displayed; POST_MESSAGE is required but ignored.
+ * - im.disk.file.commit sends files inline in the IM chat with message text.
+ *   This is the ONLY method that makes images appear inline in the task chat.
  */
 export async function POST(
   request: NextRequest,
@@ -27,10 +31,11 @@ export async function POST(
 
   try {
     const body = await request.json();
-    const { comment, fileIds } = body as {
+    const { comment, fileIds, chatId } = body as {
       comment: string;
       responsibleId?: number;
       fileIds?: number[];
+      chatId?: number;
     };
 
     if (!comment || typeof comment !== 'string' || !comment.trim()) {
@@ -43,38 +48,71 @@ export async function POST(
     const commentText = comment.trim();
     const hasFiles = fileIds && fileIds.length > 0;
 
-    console.log(`[comment] Posting comment to task ${id}, text: "${commentText.substring(0, 50)}", fileIds:`, fileIds);
+    console.log(`[comment] Posting comment to task ${id}, text: "${commentText.substring(0, 50)}", fileIds:`, fileIds, `chatId: ${chatId}`);
 
-    // Attach files to the task first (required for [DISK FILE ID] to work)
-    if (hasFiles) {
+    let commentId: number | null = null;
+    let imMessageId: number | null = null;
+
+    // =============================================
+    // PATH A: Comment WITH files → use IM API
+    // =============================================
+    if (hasFiles && chatId) {
+      // Send each file via im.disk.file.commit (with message text for the first file only)
+      let firstFile = true;
       for (const fid of fileIds!) {
         try {
-          await bitrixApi('tasks.task.files.attach', {
-            taskId: parseInt(id),
-            fileId: fid,
+          const messageText = firstFile ? commentText : '';
+          firstFile = false;
+
+          const commitResult = await bitrixApi<{
+            result: { MESSAGE_ID?: number };
+          }>('im.disk.file.commit', {
+            chat_id: chatId,
+            disk_id: fid,
+            message: messageText,
           });
-          console.log(`[comment] Attached file ${fid} to task ${id}`);
+
+          const msgId = commitResult?.result?.MESSAGE_ID;
+          if (msgId) {
+            imMessageId = msgId;
+            console.log(`[comment] File ${fid} committed to chat ${chatId}, MESSAGE_ID=${msgId}`);
+          }
         } catch (e) {
-          console.warn(`[comment] tasks.task.files.attach failed for file ${fid}:`, (e as Error).message);
-          // Non-fatal — the file is still on disk, just not formally attached
+          console.warn(`[comment] im.disk.file.commit failed for file ${fid}:`, (e as Error).message);
         }
+      }
+
+      if (imMessageId) {
+        // Also post a plain text comment via task.comment.add so it appears in old comment list
+        try {
+          const addResult = await bitrixApi<{ result: number }>('task.comment.add', {
+            taskId: id,
+            commentText: commentText,
+            POST_MESSAGE: commentText,
+          });
+          commentId = addResult.result;
+          console.log(`[comment] Text comment also posted via task.comment.add, commentId=${commentId}`);
+        } catch (e) {
+          console.warn('[comment] task.comment.add (companion text) failed:', (e as Error).message);
+        }
+
+        return NextResponse.json({
+          success: true,
+          commentId,
+          imMessageId,
+          method: 'im.disk.file.commit',
+        });
       }
     }
 
-    // Build the POST_MESSAGE with [DISK FILE ID=nX] tags for inline images
-    let postMessage = commentText;
-    if (hasFiles) {
-      const diskTags = fileIds!.map((fid: number) => `[DISK FILE ID=n${fid}]`).join('\n');
-      postMessage = `${commentText}\n${diskTags}`;
-    }
-
-    // Post comment via task.comment.add (new API — comments appear in the new task chat)
-    let commentId: number | null = null;
-
+    // =============================================
+    // PATH B: Text-only comment OR fallback → task.comment.add
+    // =============================================
     try {
       const addResult = await bitrixApi<{ result: number }>('task.comment.add', {
         taskId: id,
-        POST_MESSAGE: postMessage,
+        commentText: commentText,
+        POST_MESSAGE: commentText,
       });
       commentId = addResult.result;
       console.log(`[comment] Posted via task.comment.add, commentId=${commentId}`);
@@ -88,7 +126,7 @@ export async function POST(
         const addResult2 = await bitrixApi<{ result: number }>('task.commentitem.add', {
           TASKID: id,
           FIELDS: {
-            POST_MESSAGE: postMessage,
+            POST_MESSAGE: commentText,
           },
         });
         commentId = addResult2.result;

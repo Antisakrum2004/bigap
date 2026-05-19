@@ -1,19 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { bitrixApi } from '@/lib/bitrix-api';
-import { BITRIX_CONFIG } from '@/lib/bitrix-config';
 
 /**
  * POST /api/upload
- * Uploads a file to Bitrix24 Disk and attaches it to the task.
- * Returns the disk file ID for use in comment attachments.
+ * Uploads a file to Bitrix24 Disk.
+ * Returns the disk file ID for use in im.disk.file.commit.
  *
- * IMPORTANT: Files must be attached to the task via UF_TASK_WEBDAV_FILES
- * BEFORE referencing them with [DISK FILE ID=nX] in comments.
- * tasks.task.files.attach does NOT work reliably — we use tasks.task.update.
+ * The file will be committed to the task chat by the comment API
+ * using im.disk.file.commit — no need to attach via UF_TASK_WEBDAV_FILES.
  *
  * Body (FormData):
  *   - file: The file to upload
- *   - taskId: The task ID (required for attaching to task)
+ *   - taskId: The task ID (for reference only)
  */
 export async function POST(request: NextRequest) {
   try {
@@ -33,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[upload] Uploading "${file.name}" (${file.size} bytes) to folder ${folderId} for task ${taskId}`);
 
-    // Method 1: Upload via base64 fileContent (recommended by Bitrix24 docs - single API call)
+    // Upload via base64 fileContent (recommended — single API call)
     let diskId: number | null = null;
 
     try {
@@ -57,26 +55,21 @@ export async function POST(request: NextRequest) {
       if (result) {
         diskId = parseInt(String(result.ID || result.id || '0')) || null;
         if (diskId) {
-          console.log(`[upload] Method 1 (base64) success: diskObjectId=${diskId}`);
+          console.log(`[upload] base64 upload success: diskObjectId=${diskId}`);
         }
       }
     } catch (e) {
-      console.warn('[upload] Method 1 (base64) failed:', (e as Error).message);
+      console.warn('[upload] base64 method failed:', (e as Error).message);
     }
 
-    // Method 2: Two-step upload URL method (fallback)
+    // Fallback: Two-step upload URL method
     if (!diskId) {
       let uploadUrl: string | null = null;
       let fieldName = 'file';
 
-      // Step 2a: Get upload URL
       try {
         const urlResult = await bitrixApi<{
-          result?: {
-            uploadUrl?: string;
-            field?: string;
-            fieldId?: string;
-          };
+          result?: Record<string, unknown>;
         }>('disk.folder.uploadfile', {
           id: folderId,
           data: { NAME: file.name },
@@ -89,13 +82,12 @@ export async function POST(request: NextRequest) {
           if (result.fieldId && typeof result.fieldId === 'string') fieldName = result.fieldId;
         }
       } catch (e) {
-        console.warn('[upload] Method 2: get upload URL failed:', (e as Error).message);
+        console.warn('[upload] Get upload URL failed:', (e as Error).message);
       }
 
-      // Fallback: GET method for upload URL
       if (!uploadUrl) {
         try {
-          const getUrl = `${BITRIX_CONFIG.webhookUrl}disk.folder.uploadfile.json?id=${folderId}&data[NAME]=${encodeURIComponent(file.name)}`;
+          const getUrl = `https://1c-cms.bitrix24.ru/rest/116/48yuunr8ss2u18qm/disk.folder.uploadfile.json?id=${folderId}&data[NAME]=${encodeURIComponent(file.name)}`;
           const urlResponse = await fetch(getUrl);
           if (urlResponse.ok) {
             const urlData = await urlResponse.json();
@@ -107,7 +99,7 @@ export async function POST(request: NextRequest) {
             }
           }
         } catch (e2) {
-          console.warn('[upload] Method 2: GET fallback for URL failed:', (e2 as Error).message);
+          console.warn('[upload] GET fallback for URL failed:', (e2 as Error).message);
         }
       }
 
@@ -118,8 +110,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Step 2b: Upload file to URL
-      // Try FormData first
+      // Upload file to URL via FormData
       try {
         const fd = new FormData();
         fd.append(fieldName, file, file.name);
@@ -143,7 +134,7 @@ export async function POST(request: NextRequest) {
         console.warn('[upload] FormData method failed:', (eA as Error).message);
       }
 
-      // Try raw binary POST
+      // Try raw binary POST as last resort
       if (!diskId) {
         try {
           const buffer = Buffer.from(await file.arrayBuffer());
@@ -170,7 +161,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (diskId) {
-        console.log(`[upload] Method 2 (upload URL) success: diskObjectId=${diskId}`);
+        console.log(`[upload] Upload URL method success: diskObjectId=${diskId}`);
       }
     }
 
@@ -181,42 +172,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Step 3: Attach file to task via tasks.task.update with UF_TASK_WEBDAV_FILES
-    // This is the ONLY reliable method. tasks.task.files.attach often fails with "file not found".
-    if (taskId) {
-      try {
-        // First, get existing files on the task to preserve them
-        let existingFiles: string[] = [];
-        try {
-          const taskResult = await bitrixApi<{
-            result: { tasks: Array<{ ufTaskWebdavFiles?: number[] }> };
-          }>('tasks.task.list', {
-            filter: { ID: taskId },
-            select: ['ID', 'UF_TASK_WEBDAV_FILES'],
-          });
-          const task = taskResult?.result?.tasks?.[0];
-          if (task?.ufTaskWebdavFiles && Array.isArray(task.ufTaskWebdavFiles)) {
-            existingFiles = task.ufTaskWebdavFiles.map((id: number) => String(id));
-          }
-        } catch {
-          // If we can't get existing files, we'll just add the new one
-        }
-
-        // Build the file list: existing files + new file
-        const allFiles = [...existingFiles, `n${diskId}`];
-
-        await bitrixApi('tasks.task.update', {
-          taskId: parseInt(taskId),
-          fields: {
-            UF_TASK_WEBDAV_FILES: allFiles,
-          },
-        });
-        console.log(`[upload] Attached file n${diskId} to task ${taskId} via UF_TASK_WEBDAV_FILES (total files: ${allFiles.length})`);
-      } catch (e) {
-        console.warn(`[upload] UF_TASK_WEBDAV_FILES failed:`, (e as Error).message);
-        // Non-fatal - the file is still uploaded to disk
-      }
-    }
+    // Note: We do NOT attach the file to the task via UF_TASK_WEBDAV_FILES anymore.
+    // Instead, the comment API uses im.disk.file.commit to send the file inline in the chat.
+    // This is the only method that makes images appear inline in the task chat.
 
     return NextResponse.json({
       diskId,

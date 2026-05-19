@@ -23,6 +23,7 @@ interface RawTask {
   priority: number;
   durationFact: number;
   tags?: string[] | string;
+  chatId?: number;
   ufCrmTask?: unknown[];
   ufTaskWebdavFiles?: unknown[];
 }
@@ -42,6 +43,7 @@ interface FormattedTask {
   priority: number;
   durationFact: number;
   tags: string[];
+  chatId?: number;
 }
 
 /**
@@ -108,6 +110,7 @@ export async function GET(request: NextRequest) {
           'PRIORITY',
           'DURATION_FACT',
           'TAGS',
+          'CHAT_ID',
         ],
         start,
         order: { DEADLINE: 'desc', ID: 'desc' },
@@ -141,6 +144,7 @@ export async function GET(request: NextRequest) {
           priority: task.priority || 1,
           durationFact: task.durationFact || 0,
           tags: normalizedTags,
+          chatId: task.chatId,
         });
       }
 

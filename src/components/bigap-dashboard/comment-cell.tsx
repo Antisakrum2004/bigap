@@ -175,7 +175,7 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
       try {
         const fd = new FormData();
         fd.append('file', file);
-        fd.append('folderId', '3');
+        fd.append('taskId', taskId);
 
         const response = await fetch('/api/upload', {
           method: 'POST',
@@ -187,6 +187,9 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
           if (data.diskId) {
             diskIds.push(data.diskId);
           }
+        } else {
+          const errData = await response.json().catch(() => ({}));
+          console.error('Upload failed:', errData.error || response.status);
         }
       } catch (err) {
         console.error('Failed to upload file:', file.name, err);
@@ -195,7 +198,7 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
 
     setUploadingFiles(false);
     return diskIds;
-  }, [selectedFiles]);
+  }, [selectedFiles, taskId]);
 
   const handleSend = useCallback(async () => {
     if ((!comment.trim() && selectedFiles.length === 0) || sending) return;
@@ -204,15 +207,19 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
     try {
       // Upload files first if any
       const fileIds = await uploadFiles();
+      const hasFiles = fileIds.length > 0;
 
       const response = await fetch(`/api/task/${taskId}/comment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          comment: comment.trim() || (fileIds.length > 0 ? '📎 Вложение' : ''),
+          comment: comment.trim() || (hasFiles ? '📎 Вложение' : ''),
           responsibleId,
-          fileIds: fileIds.length > 0 ? fileIds : undefined,
+          fileIds: hasFiles ? fileIds : undefined,
         }),
+      }).catch(async (err) => {
+        console.error('Comment fetch error:', err);
+        return { ok: false, json: async () => ({ error: err.message }) } as Response;
       });
 
       if (response.ok) {
@@ -505,25 +512,42 @@ export function CommentCell({ taskId, responsibleId, className, expanded = false
 
 /**
  * Small indicator component for task rows showing if a comment was sent from dashboard.
- * This is a lightweight read-only indicator that doesn't need the full CommentCell.
+ * Checks both localStorage (recently sent) and API (has dashboard comments).
  */
 export function CommentSentIndicator({ taskId }: { taskId: string }) {
-  // We track this in localStorage per task
   const [hasSent, setHasSent] = useState(false);
 
   useEffect(() => {
+    // Check localStorage first (fast, for recently sent comments)
     try {
       const sent = localStorage.getItem(`bigap-comment-sent-${taskId}`);
       if (sent) {
         const timestamp = parseInt(sent);
-        // Show indicator for 24 hours
         if (Date.now() - timestamp < 24 * 60 * 60 * 1000) {
           setHasSent(true);
+          return;
         } else {
           localStorage.removeItem(`bigap-comment-sent-${taskId}`);
         }
       }
     } catch {}
+
+    // Also check API for existing dashboard comments (slower but accurate)
+    let cancelled = false;
+    fetch(`/api/task/${taskId}/comments`)
+      .then(r => r.ok ? r.json() : { comments: [] })
+      .then(data => {
+        if (cancelled) return;
+        const dashboardComments = (data.comments || []).filter(
+          (c: CommentItem) => c.isDashboard
+        );
+        if (dashboardComments.length > 0) {
+          setHasSent(true);
+        }
+      })
+      .catch(() => {});
+
+    return () => { cancelled = true; };
   }, [taskId]);
 
   if (!hasSent) return null;

@@ -42,6 +42,9 @@ interface UsersApiResponse {
 export default function DashboardPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [stageFilter, setStageFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortField, setSortField] = useState<string>('deadline');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   // Fetch tasks
   const {
@@ -122,6 +125,17 @@ export default function DashboardPage() {
     refetchTasks();
   }, [refetchTasks]);
 
+  const handleSortChange = useCallback((field: string) => {
+    setSortField(prev => {
+      if (prev === field) {
+        setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+      } else {
+        setSortDir('asc');
+      }
+      return field;
+    });
+  }, []);
+
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
 
   return (
@@ -170,6 +184,11 @@ export default function DashboardPage() {
           isLoading={tasksLoading}
           onTaskClick={(id) => setSelectedTaskId(id)}
           onFilterChange={setStageFilter}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          sortField={sortField}
+          sortDir={sortDir}
+          onSortChange={handleSortChange}
         />
       </main>
 

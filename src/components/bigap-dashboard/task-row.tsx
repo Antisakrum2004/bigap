@@ -5,7 +5,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { StatusDot, getStatusType } from './status-dot';
 import { StageBadge } from './stage-badge';
 import { DeadlineBadge } from './deadline-badge';
-import { TypeBadge } from './type-badge';
+import { CreatedDateBadge } from './created-date-badge';
+import { CommentCell } from './comment-cell';
 import { UsersMap, StagesMap, StatusFilter } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -55,12 +56,13 @@ export function TaskRow({ task, usersMap, stagesMap, statusFilter: _statusFilter
   const user = usersMap[task.responsibleId];
   const stage = stagesMap[task.stageId];
 
+  // Only first name
   const assigneeName = user
-    ? `${user.name} ${user.lastName}`.trim() || `#${task.responsibleId}`
+    ? user.name || `#${task.responsibleId}`
     : `#${task.responsibleId}`;
 
-  const assigneeInitials = user
-    ? `${(user.name || '')[0] || ''}${(user.lastName || '')[0] || ''}`
+  const assigneeInitial = user
+    ? (user.name || '?')[0]
     : '?';
 
   return (
@@ -100,13 +102,13 @@ export function TaskRow({ task, usersMap, stagesMap, statusFilter: _statusFilter
         />
       </TableCell>
 
-      {/* Assignee */}
-      <TableCell className="w-40">
+      {/* Assignee — first name only */}
+      <TableCell className="w-32">
         <div className="flex items-center gap-2">
           <Avatar className="h-6 w-6 shrink-0">
             {user?.avatar && <AvatarImage src={user.avatar} alt={assigneeName} />}
             <AvatarFallback className="text-[10px] bg-gray-100 text-gray-600">
-              {assigneeInitials}
+              {assigneeInitial}
             </AvatarFallback>
           </Avatar>
           <span className="text-sm text-gray-700 truncate">{assigneeName}</span>
@@ -118,9 +120,14 @@ export function TaskRow({ task, usersMap, stagesMap, statusFilter: _statusFilter
         <DeadlineBadge deadline={task.deadline} />
       </TableCell>
 
-      {/* Type */}
-      <TableCell className="w-24">
-        <TypeBadge tags={task.tags} />
+      {/* Created date */}
+      <TableCell className="w-28">
+        <CreatedDateBadge createdDate={task.createdDate} />
+      </TableCell>
+
+      {/* Comment */}
+      <TableCell className="w-48" onClick={(e) => e.stopPropagation()}>
+        <CommentCell taskId={task.id} />
       </TableCell>
     </TableRow>
   );
@@ -132,7 +139,7 @@ export function TaskCard({ task, usersMap, stagesMap, onClick }: Omit<TaskRowPro
   const stage = stagesMap[task.stageId];
 
   const assigneeName = user
-    ? `${user.name} ${user.lastName}`.trim() || `#${task.responsibleId}`
+    ? user.name || `#${task.responsibleId}`
     : `#${task.responsibleId}`;
 
   return (
@@ -158,20 +165,25 @@ export function TaskCard({ task, usersMap, stagesMap, onClick }: Omit<TaskRowPro
         {task.title}
       </h3>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Avatar className="h-5 w-5">
             {user?.avatar && <AvatarImage src={user.avatar} alt={assigneeName} />}
             <AvatarFallback className="text-[8px] bg-gray-100 text-gray-600">
-              {user?.name?.[0] || '?'}{user?.lastName?.[0] || ''}
+              {user?.name?.[0] || '?'}
             </AvatarFallback>
           </Avatar>
           <span className="text-xs text-gray-500">{assigneeName}</span>
         </div>
         <div className="flex items-center gap-2">
           <DeadlineBadge deadline={task.deadline} />
-          <TypeBadge tags={task.tags} />
+          <CreatedDateBadge createdDate={task.createdDate} />
         </div>
+      </div>
+
+      {/* Comment */}
+      <div onClick={(e) => e.stopPropagation()}>
+        <CommentCell taskId={task.id} />
       </div>
     </div>
   );

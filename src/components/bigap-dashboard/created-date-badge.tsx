@@ -4,13 +4,13 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
-interface DeadlineBadgeProps {
-  deadline: string | null;
+interface CreatedDateBadgeProps {
+  createdDate: string;
   className?: string;
 }
 
-export function DeadlineBadge({ deadline, className }: DeadlineBadgeProps) {
-  if (!deadline) {
+export function CreatedDateBadge({ createdDate, className }: CreatedDateBadgeProps) {
+  if (!createdDate) {
     return (
       <span className={cn('text-sm text-gray-400', className)}>
         —
@@ -19,10 +19,10 @@ export function DeadlineBadge({ deadline, className }: DeadlineBadgeProps) {
   }
 
   try {
-    const deadlineDate = new Date(deadline);
-    const formatted = format(deadlineDate, 'd MMMM', { locale: ru });
+    const date = new Date(createdDate);
+    const formatted = format(date, 'd MMMM', { locale: ru });
     return (
-      <span className={cn('text-sm text-gray-700', className)}>
+      <span className={cn('text-sm text-gray-500', className)}>
         {formatted}
       </span>
     );

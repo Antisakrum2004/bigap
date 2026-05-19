@@ -14,10 +14,10 @@ import { Button } from '@/components/ui/button';
 import { StatusDot, getStatusInfo } from './status-dot';
 import { StageBadge } from './stage-badge';
 import { DeadlineBadge } from './deadline-badge';
+import { CommentCell } from './comment-cell';
 import { UsersMap, StagesMap } from '@/lib/types';
-import { TASK_STATUS } from '@/lib/bitrix-config';
 import { cn } from '@/lib/utils';
-import { Calendar, Clock, User, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { Calendar, Clock, User, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface TaskModalProps {
   task: {
@@ -42,23 +42,18 @@ interface TaskModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-function stripHtml(html: string): string {
+function sanitizeDescriptionHtml(html: string): string {
   if (!html) return '';
+  // Allow safe tags including img, but strip dangerous ones
   return html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<\/div>/gi, '\n')
-    .replace(/<\/li>/gi, '\n')
-    .replace(/<li>/gi, '• ')
-    .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+    // Remove script tags
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    // Remove event handlers
+    .replace(/\s*on\w+\s*=\s*["'][^"']*["']/gi, '')
+    // Remove javascript: URLs
+    .replace(/href\s*=\s*["']javascript:[^"']*["']/gi, '')
+    // Remove style tags to prevent CSS attacks
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
 }
 
 function formatDate(dateStr: string): string {
@@ -82,15 +77,18 @@ export function TaskModal({ task, usersMap, stagesMap, open, onOpenChange }: Tas
   const user = usersMap[task.responsibleId];
   const stage = stagesMap[task.stageId];
   const statusInfo = getStatusInfo(task.deadline, task.realStatus);
+  // First name only
   const assigneeName = user
-    ? `${user.name} ${user.lastName}`.trim() || `#${task.responsibleId}`
+    ? user.name || `#${task.responsibleId}`
     : `#${task.responsibleId}`;
 
-  const plainDescription = stripHtml(task.description);
-  const isLongDescription = plainDescription.length > 200;
-  const displayDescription = descriptionExpanded
-    ? plainDescription
-    : plainDescription.slice(0, 200);
+  const hasDescription = task.description && task.description.trim().length > 0;
+  const hasImages = task.description && /<img\b/i.test(task.description);
+  const plainTextLen = task.description ? task.description.replace(/<[^>]*>/g, '').length : 0;
+  const isLongDescription = plainTextLen > 300;
+
+  // For tasks without images, show plain text; for tasks with images, show HTML
+  const shouldRenderHtml = hasImages;
 
   const priorityLabel = task.priority === 2 ? 'Высокий' : task.priority === 0 ? 'Низкий' : 'Средний';
   const priorityColor = task.priority === 2 ? 'text-red-600' : task.priority === 0 ? 'text-gray-400' : 'text-gray-600';
@@ -147,13 +145,13 @@ export function TaskModal({ task, usersMap, stagesMap, open, onOpenChange }: Tas
             </div>
           </div>
 
-          {/* Assignee */}
+          {/* Assignee — first name only */}
           <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
             <User className="h-4 w-4 text-gray-400 shrink-0" />
             <Avatar className="h-8 w-8">
               {user?.avatar && <AvatarImage src={user.avatar} alt={assigneeName} />}
               <AvatarFallback className="text-xs bg-gray-200 text-gray-600">
-                {user?.name?.[0] || '?'}{user?.lastName?.[0] || ''}
+                {(user?.name || '?')[0]}
               </AvatarFallback>
             </Avatar>
             <span className="text-sm font-medium text-gray-900">{assigneeName}</span>
@@ -181,16 +179,50 @@ export function TaskModal({ task, usersMap, stagesMap, open, onOpenChange }: Tas
             </div>
           )}
 
-          {/* Description */}
-          {plainDescription && (
+          {/* Description — render HTML with images */}
+          {hasDescription && (
             <div className="space-y-2">
               <h4 className="text-sm font-medium text-gray-700">Описание</h4>
-              <div className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
-                <p className="whitespace-pre-wrap break-words">
-                  {displayDescription}
-                  {!descriptionExpanded && isLongDescription && '...'}
-                </p>
-                {isLongDescription && (
+              <div className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3 overflow-hidden">
+                {shouldRenderHtml ? (
+                  <>
+                    <div
+                      className={cn(
+                        'prose prose-sm max-w-none break-words overflow-hidden',
+                        !descriptionExpanded && isLongDescription && 'max-h-40'
+                      )}
+                      dangerouslySetInnerHTML={{
+                        __html: sanitizeDescriptionHtml(
+                          descriptionExpanded
+                            ? task.description
+                            : task.description.slice(0, 1500)
+                        ),
+                      }}
+                    />
+                    {!descriptionExpanded && isLongDescription && (
+                      <div className="h-8 bg-gradient-to-t from-gray-50 to-transparent -mt-8 relative" />
+                    )}
+                  </>
+                ) : (
+                  <p className="whitespace-pre-wrap break-words">
+                    {task.description
+                      .replace(/<br\s*\/?>/gi, '\n')
+                      .replace(/<\/p>/gi, '\n\n')
+                      .replace(/<\/div>/gi, '\n')
+                      .replace(/<\/li>/gi, '\n')
+                      .replace(/<li>/gi, '• ')
+                      .replace(/<[^>]*>/g, '')
+                      .replace(/&nbsp;/g, ' ')
+                      .replace(/&amp;/g, '&')
+                      .replace(/&lt;/g, '<')
+                      .replace(/&gt;/g, '>')
+                      .replace(/\n{3,}/g, '\n\n')
+                      .trim()
+                      .slice(0, descriptionExpanded ? undefined : 300)}
+                    {!descriptionExpanded && plainTextLen > 300 && '...'}
+                  </p>
+                )}
+                {(isLongDescription || (shouldRenderHtml && task.description.length > 1500)) && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -214,17 +246,10 @@ export function TaskModal({ task, usersMap, stagesMap, open, onOpenChange }: Tas
             </div>
           )}
 
-          {/* Open in Bitrix24 link */}
-          <div className="pt-2 border-t">
-            <a
-              href={`https://1c-cms.bitrix24.ru/company/personal/user/${task.responsibleId}/tasks/task/view/${task.id}/`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-teal-600 hover:text-teal-700 transition-colors"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              Открыть в Bitrix24
-            </a>
+          {/* Comment */}
+          <div className="space-y-2 pt-2 border-t">
+            <h4 className="text-sm font-medium text-gray-700">Комментарий</h4>
+            <CommentCell taskId={task.id} />
           </div>
         </div>
       </DialogContent>

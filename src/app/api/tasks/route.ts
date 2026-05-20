@@ -24,6 +24,7 @@ interface RawTask {
   durationFact: number;
   tags?: string[] | string;
   chatId?: number;
+  CHAT_ID?: number | string;
   ufCrmTask?: unknown[];
   ufTaskWebdavFiles?: unknown[];
 }
@@ -144,7 +145,7 @@ export async function GET(request: NextRequest) {
           priority: task.priority || 1,
           durationFact: task.durationFact || 0,
           tags: normalizedTags,
-          chatId: task.chatId,
+          chatId: task.chatId ? parseInt(String(task.chatId)) || undefined : (task.CHAT_ID ? parseInt(String(task.CHAT_ID)) || undefined : undefined),
         });
       }
 

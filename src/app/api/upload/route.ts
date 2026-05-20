@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
             }
           }
         } catch (e2) {
-          console.warn('[upload] Method 2: GET fallback for URL failed:', (e as Error).message);
+          console.warn('[upload] Method 2: GET fallback for URL failed:', (e2 as Error).message);
         }
       }
 

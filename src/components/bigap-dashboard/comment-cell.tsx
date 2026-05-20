@@ -492,8 +492,8 @@ export function CommentCell({ taskId, responsibleId, chatId, className, expanded
   // Focused — expanded with send button and file attach
   // All controls stay inside the cell boundaries
   return (
-    <div className={cn('min-h-[24px] w-full', className)} onClick={(e) => e.stopPropagation()}>
-      <div className="border border-gray-200 rounded bg-gray-50 focus-within:border-teal-300 focus-within:ring-1 focus-within:ring-teal-200">
+    <div className={cn('min-h-[24px] w-full overflow-hidden', className)} onClick={(e) => e.stopPropagation()}>
+      <div className="border border-gray-200 rounded bg-gray-50 focus-within:border-teal-300 focus-within:ring-1 focus-within:ring-teal-200 overflow-hidden">
         <textarea
           ref={textareaRef}
           value={comment}
@@ -533,7 +533,7 @@ export function CommentCell({ taskId, responsibleId, chatId, className, expanded
           </div>
         )}
 
-        <div className="flex items-center gap-1 px-1.5 pb-1">
+        <div className="flex items-center gap-1 px-1.5 pb-1 min-w-0">
           <input
             ref={fileInputRef}
             type="file"
@@ -544,7 +544,7 @@ export function CommentCell({ taskId, responsibleId, chatId, className, expanded
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center justify-center h-5 w-5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
+            className="shrink-0 flex items-center justify-center h-5 w-5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
             title="Прикрепить изображение"
             type="button"
           >
@@ -555,7 +555,7 @@ export function CommentCell({ taskId, responsibleId, chatId, className, expanded
               onClick={handleSend}
               disabled={sending || uploadingFiles}
               className={cn(
-                'flex items-center justify-center h-5 w-5 rounded-full transition-colors',
+                'shrink-0 flex items-center justify-center h-5 w-5 rounded-full transition-colors',
                 sending || uploadingFiles
                   ? 'bg-gray-200 text-gray-400'
                   : 'bg-teal-500 text-white hover:bg-teal-600'
@@ -567,7 +567,7 @@ export function CommentCell({ taskId, responsibleId, chatId, className, expanded
             </button>
           )}
           {uploadingFiles && (
-            <span className="text-[10px] text-amber-600">Загрузка...</span>
+            <span className="text-[10px] text-amber-600 truncate">Загрузка...</span>
           )}
         </div>
       </div>

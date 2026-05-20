@@ -126,8 +126,8 @@ export function TaskTable({
   onFilterChange,
   searchQuery = '',
   onSearchChange,
-  sortField = 'deadline',
-  sortDir = 'asc',
+  sortField = 'created',
+  sortDir = 'desc',
   onSortChange,
 }: TaskTableProps) {
   const [filterOpen, setFilterOpen] = useState(false);

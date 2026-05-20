@@ -44,8 +44,8 @@ export default function DashboardPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [stageFilter, setStageFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortField, setSortField] = useState<string>('deadline');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [sortField, setSortField] = useState<string>('created');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   // Fetch tasks
   const {
